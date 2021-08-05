@@ -44,6 +44,9 @@ fn pack_file(input_dir: &str, output_file: &str) {
 fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
     println!("bruteforce {} {} {}", input_file, wordlist_file, parallel);
     println!("** Bruteforce Backup Password **");
+    if !parallel {
+        rayon::ThreadPoolBuilder::new().num_threads(1).build_global().unwrap();
+    }
     if let Ok(wordlist) = read_wordlist_file(wordlist_file) {
         if let Ok(content) = read_file_to_bytes(input_file) {
             match WholeFile::parse(&content) {
