@@ -3,8 +3,8 @@ use crypto::aes;
 use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
-use sha1::{Digest, Sha1};
-use sha2::Sha256;
+use sha1::{Sha1};
+use sha2::{Sha256, Digest};
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
 
@@ -44,7 +44,7 @@ impl RC4File {
         rc4.process(&skip, &mut skip_out);
         let mut output: Vec<u8> = vec![0; 4];
         rc4.process(&self.magic_check.to_le_bytes(), &mut output);
-        // println!("{} {:?} {:?}", ascii_password, output, MAGIC_PLAINTEXT.to_le_bytes());
+        // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 }
@@ -55,7 +55,7 @@ pub struct AESFile {
     #[br(count = 32)]
     salt: Vec<u8>,
     // offset 40
-    #[br(count = 30)]
+    #[br(count = 32)]
     padding: Vec<u8>,
     magic_check: u32,
 }
@@ -72,7 +72,7 @@ impl AESFile {
         aes_ctr.process(&skip, &mut skip_out);
         let mut output: Vec<u8> = vec![0; 4];
         aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
-        // println!("{} {:?} {:?}", ascii_password, output, MAGIC_PLAINTEXT.to_le_bytes());
+        println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 }
@@ -148,7 +148,7 @@ mod tests {
             0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4,
         ];
         file_content.append(&mut salt.clone());
-        let padding: Vec<u8> = vec![0x2; 30];
+        let padding: Vec<u8> = vec![0x2; 32];
         file_content.append(&mut padding.clone());
         let magic_check: Vec<u8> = vec![0x51, 0x52, 0x53, 0x54];
         file_content.append(&mut magic_check.clone());
@@ -178,6 +178,38 @@ mod tests {
                 },
             })
         );
+    }
+
+    #[test]
+    fn check_rc4_password() {
+        let file_content: Vec<u8> = vec![
+            0xef, 0xa8, 0x91, 0x72, 0xc9, 0xb7, 0x01, 0x00, 0x11, 0xee, 0x71, 0x06, 0x35, 0xef,
+            0x99, 0x51, 0x63, 0xd8, 0x87, 0x81, 0x0a, 0xe9, 0x6d, 0xc4, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xf4,
+            0x29, 0x35,
+        ];
+        if let WholeFile::RC4File(f) = WholeFile::parse(&file_content) {
+            assert_eq!(true, f.check_password("modificailrouter"));
+        } else {
+            panic!("We didn't get a RC4File");
+        }
+    }
+
+    #[test]
+    fn check_aes_password() {
+        let file_content: Vec<u8> = vec![
+            0xef, 0xa8, 0x91, 0x73, 0x4c, 0x00, 0x00, 0x00, 0x91, 0xdd, 0x32, 0x9b, 0x03, 0x32,
+            0xfb, 0x96, 0xf4, 0x4a, 0x1b, 0xdf, 0x8c, 0x08, 0x6f, 0x52, 0xca, 0xba, 0x67, 0xfa,
+            0xd4, 0x45, 0x75, 0x55, 0x16, 0xf4, 0xa8, 0xd0, 0xae, 0xcb, 0x9d, 0x28, 0x8b, 0x04,
+            0x39, 0x4f, 0xef, 0x0b, 0xe0, 0x7f, 0x95, 0xb7, 0x09, 0xf7, 0xb1, 0xb3, 0xc8, 0x78,
+            0xcb, 0x5f, 0x41, 0xd2, 0xcb, 0xe0, 0xff, 0x5d, 0x78, 0x92, 0xef, 0x30, 0x40, 0xd3,
+            0xa4, 0x63, 0xb2, 0xc2, 0x81, 0x07,
+        ];
+        if let WholeFile::AESFile(f) = WholeFile::parse(&file_content) {
+            assert_eq!(true, f.check_password("aespass"));
+        } else {
+            panic!("We didn't get a AESFile");
+        }
     }
 }
 
