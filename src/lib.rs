@@ -72,7 +72,7 @@ impl AESFile {
         aes_ctr.process(&skip, &mut skip_out);
         let mut output: Vec<u8> = vec![0; 4];
         aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
-        println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
+        // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 }
