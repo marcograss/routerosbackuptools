@@ -45,7 +45,10 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
     println!("bruteforce {} {} {}", input_file, wordlist_file, parallel);
     println!("** Bruteforce Backup Password **");
     if !parallel {
-        rayon::ThreadPoolBuilder::new().num_threads(1).build_global().unwrap();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
     }
     if let Ok(wordlist) = read_wordlist_file(wordlist_file) {
         if let Ok(content) = read_file_to_bytes(input_file) {
@@ -60,9 +63,15 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
                 }
                 WholeFile::AESFile(f) => {
                     println!("aes {:?}", f);
+                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(&w)) {
+                        println!("The password is: {}", found);
+                    } else {
+                        println!("Password not found");
+                    }
                 }
                 WholeFile::PlainTextFile(f) => {
                     println!("plaintext {:?}", f);
+                    println!("The file is plaintext, it's not encrypted, there is no need to find the password.")
                 }
                 WholeFile::InvalidFile => println!("Invalid File"),
             };

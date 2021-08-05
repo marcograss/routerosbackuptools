@@ -1,7 +1,10 @@
 use binread::{io::Cursor, BinRead, BinReaderExt};
+use crypto::aes;
+use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
 
@@ -55,6 +58,23 @@ pub struct AESFile {
     #[br(count = 30)]
     padding: Vec<u8>,
     magic_check: u32,
+}
+
+impl AESFile {
+    pub fn check_password(&self, password: &str) -> bool {
+        let mut hasher = Sha256::new();
+        hasher.update(&self.salt);
+        hasher.update(password.as_bytes());
+        let hash = &hasher.finalize()[0..16];
+        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
+        let skip: Vec<u8> = vec![0; 0x10];
+        let mut skip_out: Vec<u8> = vec![0; 0x10];
+        aes_ctr.process(&skip, &mut skip_out);
+        let mut output: Vec<u8> = vec![0; 4];
+        aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
+        // println!("{} {:?} {:?}", ascii_password, output, MAGIC_PLAINTEXT.to_le_bytes());
+        output == MAGIC_PLAINTEXT.to_le_bytes()
+    }
 }
 
 #[derive(BinRead, PartialEq, Debug)]
