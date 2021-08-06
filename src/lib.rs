@@ -3,8 +3,8 @@ use crypto::aes;
 use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
-use sha1::{Sha1};
-use sha2::{Sha256, Digest};
+use sha1::Sha1;
+use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
 
@@ -19,7 +19,7 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn parse(raw: &Vec<u8>) -> Header {
+    pub fn parse(raw: &[u8]) -> Header {
         Cursor::new(raw).read_ne().unwrap()
     }
 }
@@ -91,7 +91,7 @@ pub enum WholeFile {
 }
 
 impl WholeFile {
-    pub fn parse(raw: &Vec<u8>) -> WholeFile {
+    pub fn parse(raw: &[u8]) -> WholeFile {
         let h: Header = Header::parse(raw);
         match h.magic {
             MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_ne().unwrap()),

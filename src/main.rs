@@ -55,7 +55,7 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
             match WholeFile::parse(&content) {
                 WholeFile::RC4File(f) => {
                     println!("rc4 {:?}", f);
-                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(&w)) {
+                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
                         println!("The password is: {}", found);
                     } else {
                         println!("Password not found");
@@ -63,7 +63,7 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
                 }
                 WholeFile::AESFile(f) => {
                     println!("aes {:?}", f);
-                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(&w)) {
+                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
                         println!("The password is: {}", found);
                     } else {
                         println!("Password not found");
