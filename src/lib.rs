@@ -7,6 +7,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
+use std::convert::TryInto;
 
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
@@ -47,6 +48,28 @@ impl RC4File {
         // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
+
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Vec<u8> {
+        let mut decrypted = Vec::new();
+        let mut hasher = Sha1::new();
+        hasher.update(&self.salt);
+        hasher.update(password.as_bytes());
+        let hash = hasher.finalize();
+        let mut rc4 = Rc4::new(&hash);
+        let skip: Vec<u8> = vec![0; 0x300];
+        let mut skip_out: Vec<u8> = vec![0; 0x300];
+        rc4.process(&skip, &mut skip_out);
+        let mut output: Vec<u8> = vec![0; 4];
+        rc4.process(&self.magic_check.to_le_bytes(), &mut output);
+        let to_decrypt = &file_content[44..]; // skip magic, length, salt, magic_check
+        decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
+        let content_len: u32 = (file_content.len() - 44 + 8).try_into().unwrap();
+        decrypted.append(&mut content_len.to_le_bytes().to_vec());
+        let mut temp: Vec<u8> = vec![0; file_content.len() - 44];
+        rc4.process(to_decrypt, &mut temp);
+        decrypted.append(&mut temp);
+        decrypted
+    }
 }
 
 #[derive(BinRead, PartialEq, Debug)]
@@ -75,6 +98,29 @@ impl AESFile {
         // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
+
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Vec<u8> {
+        let mut decrypted = Vec::new();
+        let mut hasher = Sha256::new();
+        hasher.update(&self.salt);
+        hasher.update(password.as_bytes());
+        let hash = &hasher.finalize()[0..16];
+        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
+        let skip: Vec<u8> = vec![0; 0x10];
+        let mut skip_out: Vec<u8> = vec![0; 0x10];
+        aes_ctr.process(&skip, &mut skip_out);
+        let mut output: Vec<u8> = vec![0; 4];
+        aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
+        let to_decrypt = &file_content[76..]; // skip magic, length, salt/nonce, hmac magic_check
+        decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
+        let content_len: u32 = (file_content.len() - 76 + 8).try_into().unwrap();
+        decrypted.append(&mut content_len.to_le_bytes().to_vec());
+        let mut temp: Vec<u8> = vec![0; file_content.len() - 76];
+        aes_ctr.process(to_decrypt, &mut temp);
+        decrypted.append(&mut temp);
+        decrypted
+    }
+    
 }
 
 #[derive(BinRead, PartialEq, Debug)]
@@ -220,6 +266,12 @@ pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
     file.read_to_end(&mut data)?;
 
     Ok(data)
+}
+
+pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()> {
+    let mut file = File::open(filename)?;
+    file.write_all(content)?;
+    Ok(())
 }
 
 pub fn read_wordlist_file(filename: &str) -> std::io::Result<Vec<String>> {

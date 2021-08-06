@@ -36,8 +36,41 @@ fn info_file(input_file: &str) {
 }
 
 fn decrypt_file(input_file: &str, output_file: &str, password: &str) {
-    println!("decrypt {} {} {}", input_file, output_file, password);
+    // println!("decrypt {} {} {}", input_file, output_file, password);
     println!("** Decrypt Backup **");
+    info_file(input_file);
+    if let Ok(content) = read_file_to_bytes(input_file) {
+        match WholeFile::parse(&content) {
+            WholeFile::RC4File(f) => {
+                if f.check_password(password) {
+                    println!("Correct password!");
+                    println!("Decrypting...");
+                    let decrypted = f.decrypt(&content, password);
+                    write_bytes_to_file(&decrypted, output_file).expect("Can't write output file");
+                } else {
+                    println!("Wrong password!");
+                    println!("Cannot decrypt!");
+                }
+            }
+            WholeFile::AESFile(f) => {
+                if f.check_password(password) {
+                    println!("Correct password!");
+                    println!("Decrypting...");
+                    let decrypted = f.decrypt(&content, password);
+                    write_bytes_to_file(&decrypted, output_file).expect("Can't write output file");
+                } else {
+                    println!("Wrong password!");
+                    println!("Cannot decrypt!");
+                }
+            }
+            WholeFile::PlainTextFile(_) => {
+                println!("No decryption needed!");
+            }
+            WholeFile::InvalidFile => println!("Invalid file!"),
+        };
+    } else {
+        println!("cannot read the input file");
+    }
 }
 
 fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str) {
@@ -87,7 +120,7 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
                         println!("Password NOT found");
                     }
                 }
-                WholeFile::PlainTextFile(_f) => {
+                WholeFile::PlainTextFile(_) => {
                     // println!("plaintext {:?}", f);
                     println!("No Decryption Needed.")
                 }
