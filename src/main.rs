@@ -82,8 +82,28 @@ fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str)
 }
 
 fn unpack_file(input_file: &str, output_dir: &str) {
-    println!("unpack {} {}", input_file, output_dir);
+    // println!("unpack {} {}", input_file, output_dir);
     println!("** Unpack Backup **");
+    if let Ok(content) = read_file_to_bytes(input_file) {
+        match WholeFile::parse(&content) {
+            WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
+                println!("RouterOS Encrypted Backup");
+                println!("Cannot unpack encrypted backup!");
+                println!("Decrypt backup first!");
+            }
+            WholeFile::PlainTextFile(f) => {
+                println!("RouterOS Plaintext Backup");
+                println!("Length: {} bytes", f.header.length);
+                // TODO
+            }
+            WholeFile::InvalidFile => {
+                println!("Invalid file!");
+                println!("Cannot unpack!");
+            }
+        };
+    } else {
+        println!("cannot read the input file");
+    }
 }
 
 fn pack_file(input_dir: &str, output_file: &str) {
