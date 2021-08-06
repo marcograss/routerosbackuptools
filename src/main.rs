@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use routerosbackuptools::*;
 
 fn info_file(input_file: &str) {
-    println!("info {}", input_file);
+    // println!("info {}", input_file);
     println!("** Backup Info **");
     if let Ok(content) = read_file_to_bytes(input_file) {
         match WholeFile::parse(&content) {
@@ -59,7 +59,7 @@ fn pack_file(input_dir: &str, output_file: &str) {
 }
 
 fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
-    println!("bruteforce {} {} {}", input_file, wordlist_file, parallel);
+    // println!("bruteforce {} {} {}", input_file, wordlist_file, parallel);
     println!("** Bruteforce Backup Password **");
     if !parallel {
         rayon::ThreadPoolBuilder::new()
@@ -67,28 +67,29 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
             .build_global()
             .unwrap();
     }
+    info_file(input_file);
     if let Ok(wordlist) = read_wordlist_file(wordlist_file) {
         if let Ok(content) = read_file_to_bytes(input_file) {
             match WholeFile::parse(&content) {
                 WholeFile::RC4File(f) => {
-                    println!("rc4 {:?}", f);
+                    // println!("rc4 {:?}", f);
                     if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                        println!("The password is: {}", found);
+                        println!("Password found: {}", found);
                     } else {
-                        println!("Password not found");
+                        println!("Password NOT found");
                     }
                 }
                 WholeFile::AESFile(f) => {
-                    println!("aes {:?}", f);
+                    // println!("aes {:?}", f);
                     if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                        println!("The password is: {}", found);
+                        println!("Password found: {}", found);
                     } else {
-                        println!("Password not found");
+                        println!("Password NOT found");
                     }
                 }
-                WholeFile::PlainTextFile(f) => {
-                    println!("plaintext {:?}", f);
-                    println!("The file is plaintext, it's not encrypted, there is no need to find the password.")
+                WholeFile::PlainTextFile(_f) => {
+                    // println!("plaintext {:?}", f);
+                    println!("No Decryption Needed.")
                 }
                 WholeFile::InvalidFile => println!("Invalid File"),
             };
