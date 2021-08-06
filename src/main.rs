@@ -8,10 +8,27 @@ fn info_file(input_file: &str) {
     println!("** Backup Info **");
     if let Ok(content) = read_file_to_bytes(input_file) {
         match WholeFile::parse(&content) {
-            WholeFile::RC4File(f) => println!("rc4 {:?}", f),
-            WholeFile::AESFile(f) => println!("aes {:?}", f),
-            WholeFile::PlainTextFile(f) => println!("plaintext {:?}", f),
-            WholeFile::InvalidFile => println!("Invalid File"),
+            WholeFile::RC4File(f) => {
+                // println!("rc4 {:?}", f);
+                println!("RouterOS Encrypted Backup (rc4-sha1)");
+                println!("Length: {} bytes", f.header.length);
+                println!("Salt (hex): {:x?}", f.salt);
+                println!("Magic Check (hex): {:x?}", f.magic_check);
+            }
+            WholeFile::AESFile(f) => {
+                // println!("aes {:?}", f);
+                println!("RouterOS Encrypted Backup (aes128-ctr-sha256)");
+                println!("Length: {} bytes", f.header.length);
+                println!("Salt (hex): {:x?}", f.salt);
+                println!("Signature: {:x?}", f.signature);
+                println!("Magic Check (hex): {:x?}", f.magic_check);
+            }
+            WholeFile::PlainTextFile(f) => {
+                // println!("plaintext {:?}", f);
+                println!("RouterOS Plaintext Backup");
+                println!("Length: {} bytes", f.header.length);
+            }
+            WholeFile::InvalidFile => println!("Invalid file!"),
         };
     } else {
         println!("cannot read the input file");

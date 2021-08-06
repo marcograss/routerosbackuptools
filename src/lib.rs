@@ -14,8 +14,8 @@ const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
 
 #[derive(BinRead, PartialEq, Debug)]
 pub struct Header {
-    magic: u32,
-    length: u32,
+    pub magic: u32,
+    pub length: u32,
 }
 
 impl Header {
@@ -26,10 +26,10 @@ impl Header {
 
 #[derive(BinRead, PartialEq, Debug)]
 pub struct RC4File {
-    header: Header,
+    pub header: Header,
     #[br(count = 32)]
-    salt: Vec<u8>,
-    magic_check: u32,
+    pub salt: Vec<u8>,
+    pub magic_check: u32,
 }
 
 impl RC4File {
@@ -51,13 +51,13 @@ impl RC4File {
 
 #[derive(BinRead, PartialEq, Debug)]
 pub struct AESFile {
-    header: Header,
+    pub header: Header,
     #[br(count = 32)]
-    salt: Vec<u8>,
+    pub salt: Vec<u8>,
     // offset 40
     #[br(count = 32)]
-    padding: Vec<u8>,
-    magic_check: u32,
+    pub signature: Vec<u8>,
+    pub magic_check: u32,
 }
 
 impl AESFile {
@@ -79,7 +79,7 @@ impl AESFile {
 
 #[derive(BinRead, PartialEq, Debug)]
 pub struct PlainTextFile {
-    header: Header,
+    pub header: Header,
 }
 
 #[derive(PartialEq, Debug)]
@@ -148,8 +148,8 @@ mod tests {
             0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4,
         ];
         file_content.append(&mut salt.clone());
-        let padding: Vec<u8> = vec![0x2; 32];
-        file_content.append(&mut padding.clone());
+        let signature: Vec<u8> = vec![0x2; 32];
+        file_content.append(&mut signature.clone());
         let magic_check: Vec<u8> = vec![0x51, 0x52, 0x53, 0x54];
         file_content.append(&mut magic_check.clone());
         assert_eq!(
@@ -160,7 +160,7 @@ mod tests {
                     length: 0x5678
                 },
                 salt: salt,
-                padding: padding,
+                signature: signature,
                 magic_check: 0x54535251,
             })
         );
