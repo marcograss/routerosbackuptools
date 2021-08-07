@@ -4,6 +4,7 @@ use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use hmac::{Hmac, Mac, NewMac};
+use rand::Rng;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
@@ -48,7 +49,6 @@ impl RC4File {
         rc4.process(&skip, &mut skip_out);
         let mut output: Vec<u8> = vec![0; 4];
         rc4.process(&self.magic_check.to_le_bytes(), &mut output);
-        // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
@@ -72,6 +72,30 @@ impl RC4File {
         rc4.process(to_decrypt, &mut temp);
         decrypted.append(&mut temp);
         decrypted
+    }
+
+    pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
+        let mut encrypted = Vec::new();
+        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        let mut hasher = Sha1::new();
+        hasher.update(&salt);
+        hasher.update(password.as_bytes());
+        let hash = hasher.finalize();
+        let mut rc4 = Rc4::new(&hash);
+        let skip: Vec<u8> = vec![0; 0x300];
+        let mut skip_out: Vec<u8> = vec![0; 0x300];
+        rc4.process(&skip, &mut skip_out);
+        encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
+        let content_len: u32 = (file_content.len() - 8).try_into().unwrap();
+        encrypted.append(&mut content_len.to_le_bytes().to_vec());
+        encrypted.append(&mut salt.to_vec());
+        let mut output: Vec<u8> = vec![0; 4];
+        rc4.process(&MAGIC_PLAINTEXT.to_le_bytes(), &mut output);
+        encrypted.append(&mut output);
+        let mut temp: Vec<u8> = vec![0; content_len as usize];
+        rc4.process(&file_content[8..], &mut temp);
+        encrypted.append(&mut temp);
+        encrypted
     }
 }
 
@@ -98,7 +122,6 @@ impl AESFile {
         aes_ctr.process(&skip, &mut skip_out);
         let mut output: Vec<u8> = vec![0; 4];
         aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
-        // println!("{} {:?} {:?}", password, output, MAGIC_PLAINTEXT.to_le_bytes());
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
@@ -130,6 +153,37 @@ impl AESFile {
             Ok(_) => Ok(decrypted),
             Err(_) => Err(decrypted),
         }
+    }
+
+    pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
+        let mut encrypted = Vec::new();
+        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        encrypted.append(&mut MAGIC_ENCRYPTED_AES.to_le_bytes().to_vec());
+        let content_len: u32 = (file_content.len() - 8).try_into().unwrap();
+        encrypted.append(&mut content_len.to_le_bytes().to_vec());
+        encrypted.append(&mut salt.clone().to_vec());
+        let mut hasher = Sha256::new();
+        hasher.update(&salt);
+        hasher.update(password.as_bytes());
+        let finalized = hasher.finalize();
+        let hash = &finalized[0..16];
+        let hash_hmac = &finalized[16..];
+        let mut hmac = HmacSha256::new_from_slice(hash_hmac).expect("failed to create HmacSha256");
+        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &salt[0..16]);
+        let skip: Vec<u8> = vec![0; 0x10];
+        let mut skip_out: Vec<u8> = vec![0; 0x10];
+        aes_ctr.process(&skip, &mut skip_out);
+        let mut output: Vec<u8> = vec![0; 4];
+        aes_ctr.process(&MAGIC_PLAINTEXT.to_le_bytes(), &mut output);
+        hmac.update(&output);
+        let mut temp: Vec<u8> = vec![0; content_len as usize];
+        aes_ctr.process(&file_content[8..], &mut temp);
+        hmac.update(&temp);
+        let into_bytes = hmac.finalize().into_bytes();
+        encrypted.append(&mut into_bytes.as_slice().to_vec());
+        encrypted.append(&mut output);
+        encrypted.append(&mut temp);
+        encrypted
     }
 }
 
@@ -303,6 +357,28 @@ mod tests {
                 decrypted_content,
                 f.decrypt(&file_content, "aespass").unwrap()
             );
+        } else {
+            panic!("We didn't get a AESFile");
+        }
+    }
+
+    #[test]
+    fn check_rc4_encryption() {
+        let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
+        let encrypted = RC4File::encrypt(&decrypted_content, "rc4pass");
+        if let WholeFile::RC4File(f) = WholeFile::parse(&encrypted) {
+            assert_eq!(decrypted_content, f.decrypt(&encrypted, "rc4pass"));
+        } else {
+            panic!("We didn't get a RC4File");
+        }
+    }
+
+    #[test]
+    fn check_aes_encryption() {
+        let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
+        let encrypted = AESFile::encrypt(&decrypted_content, "aespass");
+        if let WholeFile::AESFile(f) = WholeFile::parse(&encrypted) {
+            assert_eq!(decrypted_content, f.decrypt(&encrypted, "aespass").unwrap());
         } else {
             panic!("We didn't get a AESFile");
         }
