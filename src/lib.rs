@@ -5,9 +5,9 @@ use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
-use std::convert::TryInto;
 
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
@@ -120,7 +120,6 @@ impl AESFile {
         decrypted.append(&mut temp);
         decrypted
     }
-    
 }
 
 #[derive(BinRead, PartialEq, Debug)]
@@ -268,7 +267,10 @@ mod tests {
         ];
         let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
         if let WholeFile::RC4File(f) = WholeFile::parse(&file_content) {
-            assert_eq!(decrypted_content, f.decrypt(&file_content, "modificailrouter"));
+            assert_eq!(
+                decrypted_content,
+                f.decrypt(&file_content, "modificailrouter")
+            );
         } else {
             panic!("We didn't get a RC4File");
         }
@@ -291,7 +293,6 @@ mod tests {
             panic!("We didn't get a AESFile");
         }
     }
-
 }
 
 pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
