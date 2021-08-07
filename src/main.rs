@@ -56,8 +56,18 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) {
                 if f.check_password(password) {
                     println!("Correct password!");
                     println!("Decrypting...");
-                    let decrypted = f.decrypt(&content, password);
-                    write_bytes_to_file(&decrypted, output_file).expect("Can't write output file");
+                    match f.decrypt(&content, password) {
+                        Ok(decrypted) => {
+                            println!("Decrypted correctly");
+                            write_bytes_to_file(&decrypted, output_file)
+                                .expect("Can't write output file");
+                        }
+                        Err(decrypted) => {
+                            println!("Decryption completed, but HMAC check failed - file has been modified!");
+                            write_bytes_to_file(&decrypted, output_file)
+                                .expect("Can't write output file");
+                        }
+                    };
                 } else {
                     println!("Wrong password!");
                     println!("Cannot decrypt!");
@@ -261,7 +271,7 @@ fn main() {
                 ),
         )
         .get_matches();
-    println!("{:?}", matches);
+    // println!("{:?}", matches);
     match matches.subcommand() {
         ("info", Some(sub_m)) => info_file(sub_m.value_of("input").unwrap()),
         ("decrypt", Some(sub_m)) => decrypt_file(

@@ -3,6 +3,7 @@ use crypto::aes;
 use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
+use hmac::{Hmac, Mac, NewMac};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
@@ -12,6 +13,8 @@ use std::io::{prelude::*, BufReader, Read};
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
 const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(BinRead, PartialEq, Debug)]
 pub struct Header {
@@ -99,12 +102,15 @@ impl AESFile {
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
-    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Vec<u8> {
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<Vec<u8>, Vec<u8>> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha256::new();
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
-        let hash = &hasher.finalize()[0..16];
+        let finalized = hasher.finalize();
+        let hash = &finalized[0..16];
+        let hash_hmac = &finalized[16..];
+        let mut hmac = HmacSha256::new_from_slice(hash_hmac).expect("failed to create HmacSha256");
         let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
         let skip: Vec<u8> = vec![0; 0x10];
         let mut skip_out: Vec<u8> = vec![0; 0x10];
@@ -118,7 +124,12 @@ impl AESFile {
         let mut temp: Vec<u8> = vec![0; file_content.len() - 76];
         aes_ctr.process(to_decrypt, &mut temp);
         decrypted.append(&mut temp);
-        decrypted
+        hmac.update(&self.magic_check.to_le_bytes());
+        hmac.update(to_decrypt);
+        match hmac.verify(&self.signature) {
+            Ok(_) => Ok(decrypted),
+            Err(_) => Err(decrypted),
+        }
     }
 }
 
@@ -288,7 +299,10 @@ mod tests {
         ];
         let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
         if let WholeFile::AESFile(f) = WholeFile::parse(&file_content) {
-            assert_eq!(decrypted_content, f.decrypt(&file_content, "aespass"));
+            assert_eq!(
+                decrypted_content,
+                f.decrypt(&file_content, "aespass").unwrap()
+            );
         } else {
             panic!("We didn't get a AESFile");
         }
