@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+//! Tools to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files
+
 use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
 use binwrite::BinWrite;
 use crypto::aes;
@@ -19,27 +22,36 @@ const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Common Header for the router files
 #[derive(BinRead, PartialEq, Debug)]
 pub struct Header {
+    /// Magic to identify the filetype
     pub magic: u32,
+    /// Length of the file
     pub length: u32,
 }
 
 impl Header {
+    /// Parse a header from raw bytes
     pub fn parse(raw: &[u8]) -> Header {
         Cursor::new(raw).read_le().unwrap()
     }
 }
 
+/// RC4 type of file, encrypted with the rc4
 #[derive(BinRead, PartialEq, Debug)]
 pub struct RC4File {
+    /// The generic header
     pub header: Header,
+    /// salt for encryption
     #[br(count = 32)]
     pub salt: Vec<u8>,
+    /// Magic to check if the decryption is correct
     pub magic_check: u32,
 }
 
 impl RC4File {
+    /// Check if the rc4 file password is correct or not
     pub fn check_password(&self, password: &str) -> bool {
         let mut hasher = Sha1::new();
         hasher.update(&self.salt);
@@ -54,6 +66,7 @@ impl RC4File {
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
+    /// decrypt the rc4 file content
     pub fn decrypt(&self, file_content: &[u8], password: &str) -> Vec<u8> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha1::new();
@@ -76,6 +89,7 @@ impl RC4File {
         decrypted
     }
 
+    /// Encrypt a file content to this rc4 format
     pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
@@ -101,18 +115,24 @@ impl RC4File {
     }
 }
 
+/// AES encrypted file type
 #[derive(BinRead, PartialEq, Debug)]
 pub struct AESFile {
+    /// Common header
     pub header: Header,
+    /// Encryption salt
     #[br(count = 32)]
     pub salt: Vec<u8>,
     // offset 40
+    /// Signature for hmac
     #[br(count = 32)]
     pub signature: Vec<u8>,
+    /// Magic to check if the decryption is correct
     pub magic_check: u32,
 }
 
 impl AESFile {
+    /// Check if the AES file password is correct or not
     pub fn check_password(&self, password: &str) -> bool {
         let mut hasher = Sha256::new();
         hasher.update(&self.salt);
@@ -127,6 +147,7 @@ impl AESFile {
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
+    /// Decrypt the AES file
     pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<Vec<u8>, Vec<u8>> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha256::new();
@@ -157,6 +178,7 @@ impl AESFile {
         }
     }
 
+    /// Encrypt the file to AES type
     pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
@@ -205,19 +227,26 @@ struct PackedTriple {
     dat: PackedItem,
 }
 
+/// Structure representing a packed file, with a name, idx and dat
 #[derive(PartialEq, Debug)]
 pub struct PackedFile {
+    /// Filename
     pub name: String,
+    /// idx file content
     pub idx: Vec<u8>,
+    /// dat file content
     pub dat: Vec<u8>,
 }
 
+/// Plaintext unencrypted file
 #[derive(BinRead, PartialEq, Debug)]
 pub struct PlainTextFile {
+    /// Common header
     pub header: Header,
 }
 
 impl PlainTextFile {
+    /// Unpack a decrypted file
     pub fn unpack_files(&self, file_content: &[u8]) -> Vec<PackedFile> {
         let mut files: Vec<PackedFile> = Vec::new();
         let file_content = &file_content[8..];
@@ -241,6 +270,7 @@ impl PlainTextFile {
         files
     }
 
+    /// Pack files to a decrypted file
     pub fn pack_files(files: &[PackedFile]) -> Vec<u8> {
         let mut packed: Vec<u8> = Vec::new();
         for f in files.iter() {
@@ -272,15 +302,21 @@ impl PlainTextFile {
     }
 }
 
+/// Enum of all the possible RouterOS filetypes
 #[derive(PartialEq, Debug)]
 pub enum WholeFile {
+    /// RC4 Encrypted type
     RC4File(RC4File),
+    /// AES encrypted type
     AESFile(AESFile),
+    /// Unencrypted type
     PlainTextFile(PlainTextFile),
+    /// The file is not valid
     InvalidFile,
 }
 
 impl WholeFile {
+    /// Parse raw bytes into one of the file types
     pub fn parse(raw: &[u8]) -> WholeFile {
         let h: Header = Header::parse(raw);
         match h.magic {
@@ -504,6 +540,7 @@ mod tests {
     }
 }
 
+/// utility to read a file in a vector of bytes
 pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
     let mut file = File::open(filename)?;
 
@@ -513,12 +550,14 @@ pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
     Ok(data)
 }
 
+/// Utility to write a vector of bytes to a file
 pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()> {
     let mut file = File::open(filename)?;
     file.write_all(content)?;
     Ok(())
 }
 
+/// Utility to read the wordlist for password cracking to a vec of strings
 pub fn read_wordlist_file(filename: &str) -> std::io::Result<Vec<String>> {
     let file = File::open(filename)?;
     let buf = BufReader::new(file);
