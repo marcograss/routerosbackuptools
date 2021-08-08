@@ -1,4 +1,5 @@
-use binread::{io::Cursor, BinRead, BinReaderExt};
+use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
+use binwrite::BinWrite;
 use crypto::aes;
 use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
@@ -10,6 +11,7 @@ use sha2::{Digest, Sha256};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
+use std::str;
 
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
@@ -25,7 +27,7 @@ pub struct Header {
 
 impl Header {
     pub fn parse(raw: &[u8]) -> Header {
-        Cursor::new(raw).read_ne().unwrap()
+        Cursor::new(raw).read_le().unwrap()
     }
 }
 
@@ -187,9 +189,87 @@ impl AESFile {
     }
 }
 
+#[derive(BinRead, PartialEq, Debug, BinWrite)]
+#[binwrite(little)]
+struct PackedItem {
+    len: u32,
+    #[br(count = len)]
+    content: Vec<u8>,
+}
+
+#[derive(BinRead, PartialEq, Debug, BinWrite)]
+#[binwrite(little)]
+struct PackedTriple {
+    name: PackedItem,
+    idx: PackedItem,
+    dat: PackedItem,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct PackedFile {
+    pub name: String,
+    pub idx: Vec<u8>,
+    pub dat: Vec<u8>,
+}
+
 #[derive(BinRead, PartialEq, Debug)]
 pub struct PlainTextFile {
     pub header: Header,
+}
+
+impl PlainTextFile {
+    pub fn unpack_files(&self, file_content: &[u8]) -> Vec<PackedFile> {
+        let mut files: Vec<PackedFile> = Vec::new();
+        let file_content = &file_content[8..];
+        let mut extracted: Vec<PackedTriple> = Vec::new();
+        let mut cursor = Cursor::new(file_content);
+        loop {
+            let r: BinResult<PackedTriple> = cursor.read_le();
+            if r.is_err() {
+                break;
+            }
+            let e = r.unwrap();
+            extracted.push(e);
+        }
+        for c in extracted.iter() {
+            files.push(PackedFile {
+                name: str::from_utf8(&c.name.content).unwrap().to_string(),
+                idx: c.idx.content.clone(),
+                dat: c.dat.content.clone(),
+            });
+        }
+        files
+    }
+
+    pub fn pack_files(files: &Vec<PackedFile>) -> Vec<u8> {
+        let mut packed: Vec<u8> = Vec::new();
+        for f in files.iter() {
+            let name_vec: Vec<u8> = f.name.clone().into_bytes();
+            let t = PackedTriple {
+                name: PackedItem {
+                    len: (name_vec.len() as u32),
+                    content: name_vec,
+                },
+                idx: PackedItem {
+                    len: f.idx.len() as u32,
+                    content: f.idx.clone(),
+                },
+                dat: PackedItem {
+                    len: f.dat.len() as u32,
+                    content: f.dat.clone(),
+                },
+            };
+            let mut tmp: Vec<u8> = Vec::new();
+            t.write(&mut tmp).unwrap();
+            packed.append(&mut tmp);
+        }
+        let content_len: u32 = (packed.len() - 4) as u32;
+        let mut header: Vec<u8> = Vec::new();
+        header.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
+        header.append(&mut content_len.to_le_bytes().to_vec());
+        header.append(&mut packed);
+        header
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -204,9 +284,9 @@ impl WholeFile {
     pub fn parse(raw: &[u8]) -> WholeFile {
         let h: Header = Header::parse(raw);
         match h.magic {
-            MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_ne().unwrap()),
-            MAGIC_ENCRYPTED_AES => WholeFile::AESFile(Cursor::new(raw).read_ne().unwrap()),
-            MAGIC_PLAINTEXT => WholeFile::PlainTextFile(Cursor::new(raw).read_ne().unwrap()),
+            MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_le().unwrap()),
+            MAGIC_ENCRYPTED_AES => WholeFile::AESFile(Cursor::new(raw).read_le().unwrap()),
+            MAGIC_PLAINTEXT => WholeFile::PlainTextFile(Cursor::new(raw).read_le().unwrap()),
             _ => WholeFile::InvalidFile,
         }
     }
@@ -381,6 +461,45 @@ mod tests {
             assert_eq!(decrypted_content, f.decrypt(&encrypted, "aespass").unwrap());
         } else {
             panic!("We didn't get a AESFile");
+        }
+    }
+
+    #[test]
+    fn check_unpack_files() {
+        let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
+        match WholeFile::parse(&decrypted_content) {
+            WholeFile::PlainTextFile(f) => {
+                let unpacked = f.unpack_files(&decrypted_content);
+                assert_eq!(0, unpacked.len());
+            }
+            _ => {
+                panic!("we didn't get a PlainTextFile");
+            }
+        }
+    }
+
+    #[test]
+    fn check_pack_unpack() {
+        let mut files: Vec<PackedFile> = Vec::new();
+        files.push(PackedFile {
+            name: "test1".to_string(),
+            idx: vec![1; 5],
+            dat: vec![2; 4],
+        });
+        files.push(PackedFile {
+            name: "test2".to_string(),
+            idx: vec![3; 7],
+            dat: vec![4; 8],
+        });
+        let packed = PlainTextFile::pack_files(&files);
+        match WholeFile::parse(&packed) {
+            WholeFile::PlainTextFile(f) => {
+                let unpacked = f.unpack_files(&packed);
+                assert_eq!(files, unpacked);
+            }
+            _ => {
+                panic!("we didn't get a PlainTextFile");
+            }
         }
     }
 }
