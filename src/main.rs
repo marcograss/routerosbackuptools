@@ -174,8 +174,48 @@ fn unpack_file(input_file: &str, output_dir: &str) {
 }
 
 fn pack_file(input_dir: &str, output_file: &str) {
-    println!("pack {} {}", input_dir, output_file);
     println!("** Pack Backup **");
+    let mut files_to_pack: Vec<PackedFile> = Vec::new();
+    let input_dir = Path::new(input_dir);
+    if !input_dir.exists() {
+        println!("The input directory {} does not exist", input_dir.display());
+        return;
+    }
+    if !input_dir.is_dir() {
+        println!("{} is not a directory", input_dir.display());
+    }
+    let files = fs::read_dir(input_dir).unwrap();
+    for f in files.flatten() {
+        let path = f.path();
+        let extension_obj = path.extension();
+        if let Some(extension_obj) = extension_obj {
+            let extension = extension_obj;
+            if extension == "idx" {
+                let stripped_filename = path.file_stem().unwrap().to_str().unwrap();
+                let dat_filename = input_dir.join(format!("{}.dat", stripped_filename));
+                let dat_path = Path::new(&dat_filename);
+                if dat_path.exists() {
+                    files_to_pack.push(PackedFile {
+                        name: stripped_filename.to_string(),
+                        idx: read_file_to_bytes(path.to_str().unwrap()).unwrap(),
+                        dat: read_file_to_bytes(dat_path.to_str().unwrap()).unwrap(),
+                    });
+                }
+            }
+        }
+    }
+    if !files_to_pack.is_empty() {
+        println!(
+            "Packing {} files from {} into {}",
+            files_to_pack.len(),
+            input_dir.display(),
+            output_file
+        );
+        let packed = PlainTextFile::pack_files(&files_to_pack);
+        if let Err(e) = write_bytes_to_file(&packed, output_file) {
+            println!("Error writing the packed file {}", e);
+        }
+    }
 }
 
 fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
