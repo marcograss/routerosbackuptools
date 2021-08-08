@@ -1,5 +1,7 @@
 # RouterOS-Backup-Tools
 
+[![Build Status](https://travis-ci.com/marcograss/routerosbackuptools.svg?token=PpFLMLLGPtRTYeqpkZXr&branch=main)](https://travis-ci.com/marcograss/routerosbackuptools)
+
 Tools to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files
 
 ## Usage examples  
