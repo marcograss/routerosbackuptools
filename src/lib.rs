@@ -241,7 +241,7 @@ impl PlainTextFile {
         files
     }
 
-    pub fn pack_files(files: &Vec<PackedFile>) -> Vec<u8> {
+    pub fn pack_files(files: &[PackedFile]) -> Vec<u8> {
         let mut packed: Vec<u8> = Vec::new();
         for f in files.iter() {
             let name_vec: Vec<u8> = f.name.clone().into_bytes();

@@ -1,7 +1,7 @@
 use clap::{App, Arg, SubCommand};
 use rayon::prelude::*;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use routerosbackuptools::*;
 
@@ -117,7 +117,10 @@ fn unpack_file(input_file: &str, output_dir: &str) {
     println!("** Unpack Backup **");
     let output_dir = Path::new(output_dir);
     if output_dir.exists() {
-        println!("Directory {} already exists, cannot extract!", output_dir.display());
+        println!(
+            "Directory {} already exists, cannot extract!",
+            output_dir.display()
+        );
         return;
     }
     if let Ok(content) = read_file_to_bytes(input_file) {
@@ -136,16 +139,28 @@ fn unpack_file(input_file: &str, output_dir: &str) {
                 if files_num > 0 {
                     if fs::create_dir(output_dir).is_ok() {
                         for f in unpacked_files.iter() {
-                            let idx = output_dir.join(Path::new(format!("{}.idx", f.name))).to_str().unwrap();
-                            let dat = output_dir.join(Path::new(format!("{}.dat", f.name))).to_str().unwrap();
-                            if write_bytes_to_file(&f.idx, idx).is_err() {
+                            let idx = output_dir
+                                .join(Path::new(&format!("{}.idx", &f.name)))
+                                .into_os_string()
+                                .into_string()
+                                .unwrap();
+                            let dat = output_dir
+                                .join(Path::new(&format!("{}.dat", &f.name)))
+                                .into_os_string()
+                                .into_string()
+                                .unwrap();
+                            if write_bytes_to_file(&f.idx, &idx).is_err() {
                                 println!("Cannot write {}", idx);
                             }
-                            if write_bytes_to_file(&f.dat, dat).is_err() {
+                            if write_bytes_to_file(&f.dat, &dat).is_err() {
                                 println!("Cannot write {}", dat);
                             }
                         }
-                        println!("Wrote {} files pair in: {}", files_num, output_dir.display());
+                        println!(
+                            "Wrote {} files pair in: {}",
+                            files_num,
+                            output_dir.display()
+                        );
                     } else {
                         println!("Cannot create the {} directory", output_dir.display());
                     }
