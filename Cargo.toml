@@ -7,7 +7,10 @@ edition = "2018"
 
 [dependencies]
 binread = "2.1.1"
+binwrite = "0.2.1"
 clap = "2.33.3"
+hmac = "0.11.0"
+rand = "0.8.4"
 rayon = "1.5.1"
 rust-crypto = "0.2.36"
 sha-1 = "0.9.7"
