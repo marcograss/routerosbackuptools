@@ -7,7 +7,7 @@ use crypto::aes;
 use crypto::aes::KeySize;
 use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{Hmac, Mac};
 use rand::Rng;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
@@ -172,7 +172,7 @@ impl AESFile {
         decrypted.append(&mut temp);
         hmac.update(&self.magic_check.to_le_bytes());
         hmac.update(to_decrypt);
-        match hmac.verify(&self.signature) {
+        match hmac.verify_slice(&self.signature) {
             Ok(_) => Ok(decrypted),
             Err(_) => Err(decrypted),
         }

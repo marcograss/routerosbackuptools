@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use rayon::prelude::*;
 use std::fs;
@@ -261,7 +262,7 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
     let matches = App::new("routerosbackuptools")
         .version("1.0")
         .author("marcograss <marco.gra@gmail.com>")
@@ -269,7 +270,7 @@ fn main() {
         .subcommand(
             SubCommand::with_name("info").arg(
                 Arg::with_name("input")
-                    .short("i")
+                    .short('i')
                     .help("input file")
                     .required(true)
                     .takes_value(true),
@@ -279,21 +280,21 @@ fn main() {
             SubCommand::with_name("decrypt")
                 .arg(
                     Arg::with_name("input")
-                        .short("i")
+                        .short('i')
                         .help("encrypted input file")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("output")
-                        .short("o")
+                        .short('o')
                         .help("decrypted output file")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("password")
-                        .short("p")
+                        .short('p')
                         .help("encryption password")
                         .required(true)
                         .takes_value(true),
@@ -303,28 +304,28 @@ fn main() {
             SubCommand::with_name("encrypt")
                 .arg(
                     Arg::with_name("input")
-                        .short("i")
+                        .short('i')
                         .help("input file to encrypt")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("output")
-                        .short("o")
+                        .short('o')
                         .help("encrypted output file")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("password")
-                        .short("p")
+                        .short('p')
                         .help("encryption password")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("algo")
-                        .short("e")
+                        .short('e')
                         .help("encryption algorithm")
                         .required(true)
                         .takes_value(true)
@@ -335,14 +336,14 @@ fn main() {
             SubCommand::with_name("unpack")
                 .arg(
                     Arg::with_name("input")
-                        .short("i")
+                        .short('i')
                         .help("input file to unpack")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("directory")
-                        .short("d")
+                        .short('d')
                         .help("output directory")
                         .required(true)
                         .takes_value(true),
@@ -352,14 +353,14 @@ fn main() {
             SubCommand::with_name("pack")
                 .arg(
                     Arg::with_name("output")
-                        .short("o")
+                        .short('o')
                         .help("packed output file")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("directory")
-                        .short("d")
+                        .short('d')
                         .help("input directory to pack")
                         .required(true)
                         .takes_value(true),
@@ -369,51 +370,52 @@ fn main() {
             SubCommand::with_name("bruteforce")
                 .arg(
                     Arg::with_name("input")
-                        .short("i")
+                        .short('i')
                         .help("encrypted input file")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("wordlist")
-                        .short("w")
+                        .short('w')
                         .help("wordlist txt with the passwords to try")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("parallel")
-                        .short("p")
+                        .short('p')
                         .help("bruteforce with parallelism"),
                 ),
         )
         .get_matches();
     match matches.subcommand() {
-        ("info", Some(sub_m)) => info_file(sub_m.value_of("input").unwrap()),
-        ("decrypt", Some(sub_m)) => decrypt_file(
+        Some(("info", sub_m)) => info_file(sub_m.value_of("input").unwrap()),
+        Some(("decrypt", sub_m)) => decrypt_file(
             sub_m.value_of("input").unwrap(),
             sub_m.value_of("output").unwrap(),
             sub_m.value_of("password").unwrap(),
         ),
-        ("encrypt", Some(sub_m)) => encrypt_file(
+        Some(("encrypt", sub_m)) => encrypt_file(
             sub_m.value_of("input").unwrap(),
             sub_m.value_of("output").unwrap(),
             sub_m.value_of("password").unwrap(),
             sub_m.value_of("algo").unwrap(),
         ),
-        ("unpack", Some(sub_m)) => unpack_file(
+        Some(("unpack", sub_m)) => unpack_file(
             sub_m.value_of("input").unwrap(),
             sub_m.value_of("directory").unwrap(),
         ),
-        ("pack", Some(sub_m)) => pack_file(
+        Some(("pack", sub_m)) => pack_file(
             sub_m.value_of("directory").unwrap(),
             sub_m.value_of("output").unwrap(),
         ),
-        ("bruteforce", Some(sub_m)) => bruteforce_file(
+        Some(("bruteforce", sub_m)) => bruteforce_file(
             sub_m.value_of("input").unwrap(),
             sub_m.value_of("wordlist").unwrap(),
             sub_m.is_present("parallel"),
         ),
         _ => unimplemented!(),
-    }
+    };
+    Ok(())
 }
