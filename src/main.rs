@@ -11,32 +11,29 @@ use routerosbackuptools::{
 
 fn info_file(input_file: &str) -> Result<()> {
     println!("** Backup Info **");
-    if let Ok(content) = read_file_to_bytes(input_file) {
-        match WholeFile::parse(&content) {
-            WholeFile::RC4File(f) => {
-                println!("RouterOS Encrypted Backup (rc4-sha1)");
-                println!("Length: {} bytes", f.header.length);
-                println!("Salt (hex): {:x?}", f.salt);
-                println!("Magic Check (hex): {:x?}", f.magic_check);
-                Ok(())
-            }
-            WholeFile::AESFile(f) => {
-                println!("RouterOS Encrypted Backup (aes128-ctr-sha256)");
-                println!("Length: {} bytes", f.header.length);
-                println!("Salt (hex): {:x?}", f.salt);
-                println!("Signature: {:x?}", f.signature);
-                println!("Magic Check (hex): {:x?}", f.magic_check);
-                Ok(())
-            }
-            WholeFile::PlainTextFile(f) => {
-                println!("RouterOS Plaintext Backup");
-                println!("Length: {} bytes", f.header.length);
-                Ok(())
-            }
-            WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
+    let content = read_file_to_bytes(input_file)?;
+    match WholeFile::parse(&content) {
+        WholeFile::RC4File(f) => {
+            println!("RouterOS Encrypted Backup (rc4-sha1)");
+            println!("Length: {} bytes", f.header.length);
+            println!("Salt (hex): {:x?}", f.salt);
+            println!("Magic Check (hex): {:x?}", f.magic_check);
+            Ok(())
         }
-    } else {
-        Err(anyhow!("cannot read the input file"))
+        WholeFile::AESFile(f) => {
+            println!("RouterOS Encrypted Backup (aes128-ctr-sha256)");
+            println!("Length: {} bytes", f.header.length);
+            println!("Salt (hex): {:x?}", f.salt);
+            println!("Signature: {:x?}", f.signature);
+            println!("Magic Check (hex): {:x?}", f.magic_check);
+            Ok(())
+        }
+        WholeFile::PlainTextFile(f) => {
+            println!("RouterOS Plaintext Backup");
+            println!("Length: {} bytes", f.header.length);
+            Ok(())
+        }
+        WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
     }
 }
 
