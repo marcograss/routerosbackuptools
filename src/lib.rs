@@ -1,15 +1,13 @@
 #![warn(missing_docs)]
 //! Tools to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files
 
+use aes::cipher::KeyIvInit;
 use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
 use binwrite::BinWrite;
-use crypto::aes;
-use crypto::aes::KeySize;
-use crypto::symmetriccipher::SynchronousStreamCipher;
 use hmac_sha256::HMAC;
 use rand::Rng;
-use rc4::Rc4;
-use rc4::{KeyInit, StreamCipher};
+use rc4::KeyInit;
+use rc4::{Rc4, StreamCipher};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
@@ -20,6 +18,8 @@ use std::str;
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
 const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
+
+type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
 /// Common Header for the router files
 #[derive(BinRead, PartialEq, Debug, Eq)]
@@ -134,12 +134,11 @@ impl AESFile {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = &hasher.finalize()[0..16];
-        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
-        let skip: Vec<u8> = vec![0; 0x10];
+        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), self.salt[0..16].into());
         let mut skip_out: Vec<u8> = vec![0; 0x10];
-        aes_ctr.process(&skip, &mut skip_out);
-        let mut output: Vec<u8> = vec![0; 4];
-        aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
+        aes_ctr.apply_keystream(&mut skip_out);
+        let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
+        aes_ctr.apply_keystream(&mut output);
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
@@ -153,18 +152,17 @@ impl AESFile {
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
-        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
-        let skip: Vec<u8> = vec![0; 0x10];
+        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), self.salt[0..16].into());
         let mut skip_out: Vec<u8> = vec![0; 0x10];
-        aes_ctr.process(&skip, &mut skip_out);
-        let mut output: Vec<u8> = vec![0; 4];
-        aes_ctr.process(&self.magic_check.to_le_bytes(), &mut output);
+        aes_ctr.apply_keystream(&mut skip_out);
+        let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
+        aes_ctr.apply_keystream(&mut output);
         let to_decrypt = &file_content[76..]; // skip magic, length, salt/nonce, hmac magic_check
         decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
         let content_len: u32 = (file_content.len() - 76 + 8).try_into().unwrap();
         decrypted.append(&mut content_len.to_le_bytes().to_vec());
-        let mut temp: Vec<u8> = vec![0; file_content.len() - 76];
-        aes_ctr.process(to_decrypt, &mut temp);
+        let mut temp: Vec<u8> = to_decrypt.to_vec();
+        aes_ctr.apply_keystream(&mut temp);
         decrypted.append(&mut temp);
         hmac.update(&self.magic_check.to_le_bytes());
         hmac.update(to_decrypt);
@@ -191,15 +189,14 @@ impl AESFile {
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
-        let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &salt[0..16]);
-        let skip: Vec<u8> = vec![0; 0x10];
+        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), salt[0..16].into());
         let mut skip_out: Vec<u8> = vec![0; 0x10];
-        aes_ctr.process(&skip, &mut skip_out);
-        let mut output: Vec<u8> = vec![0; 4];
-        aes_ctr.process(&MAGIC_PLAINTEXT.to_le_bytes(), &mut output);
+        aes_ctr.apply_keystream(&mut skip_out);
+        let mut output: Vec<u8> = MAGIC_PLAINTEXT.to_le_bytes().into();
+        aes_ctr.apply_keystream(&mut output);
         hmac.update(&output);
-        let mut temp: Vec<u8> = vec![0; content_len as usize];
-        aes_ctr.process(&file_content[8..], &mut temp);
+        let mut temp: Vec<u8> = file_content[8..].to_vec();
+        aes_ctr.apply_keystream(&mut temp);
         hmac.update(&temp);
         let into_bytes = hmac.finalize();
         encrypted.append(&mut into_bytes.as_slice().to_vec());
