@@ -203,8 +203,8 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
                 if dat_path.exists() {
                     files_to_pack.push(PackedFile {
                         name: stripped_filename.to_string(),
-                        idx: read_file_to_bytes(path.to_str().unwrap()).unwrap(),
-                        dat: read_file_to_bytes(dat_path.to_str().unwrap()).unwrap(),
+                        idx: read_file_to_bytes(path.to_str().unwrap())?,
+                        dat: read_file_to_bytes(dat_path.to_str().unwrap())?,
                     });
                 }
             }
