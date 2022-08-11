@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{App, Arg, SubCommand};
 use rayon::prelude::*;
 use std::fs;
@@ -9,7 +9,7 @@ use routerosbackuptools::{
     PlainTextFile, RC4File, WholeFile,
 };
 
-fn info_file(input_file: &str) {
+fn info_file(input_file: &str) -> Result<()> {
     println!("** Backup Info **");
     if let Ok(content) = read_file_to_bytes(input_file) {
         match WholeFile::parse(&content) {
@@ -18,6 +18,7 @@ fn info_file(input_file: &str) {
                 println!("Length: {} bytes", f.header.length);
                 println!("Salt (hex): {:x?}", f.salt);
                 println!("Magic Check (hex): {:x?}", f.magic_check);
+                Ok(())
             }
             WholeFile::AESFile(f) => {
                 println!("RouterOS Encrypted Backup (aes128-ctr-sha256)");
@@ -25,171 +26,174 @@ fn info_file(input_file: &str) {
                 println!("Salt (hex): {:x?}", f.salt);
                 println!("Signature: {:x?}", f.signature);
                 println!("Magic Check (hex): {:x?}", f.magic_check);
+                Ok(())
             }
             WholeFile::PlainTextFile(f) => {
                 println!("RouterOS Plaintext Backup");
                 println!("Length: {} bytes", f.header.length);
+                Ok(())
             }
-            WholeFile::InvalidFile => println!("Invalid file!"),
-        };
+            WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
+        }
     } else {
-        println!("cannot read the input file");
+        Err(anyhow!("cannot read the input file"))
     }
 }
 
-fn decrypt_file(input_file: &str, output_file: &str, password: &str) {
+fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<()> {
     println!("** Decrypt Backup **");
-    info_file(input_file);
-    if let Ok(content) = read_file_to_bytes(input_file) {
-        match WholeFile::parse(&content) {
-            WholeFile::RC4File(f) => {
-                if f.check_password(password) {
-                    println!("Correct password!");
-                    println!("Decrypting...");
-                    let decrypted = f.decrypt(&content, password);
-                    write_bytes_to_file(&decrypted, output_file).expect("Can't write output file");
-                } else {
-                    println!("Wrong password!");
-                    println!("Cannot decrypt!");
-                }
+    info_file(input_file)?;
+    let content = read_file_to_bytes(input_file)?;
+    match WholeFile::parse(&content) {
+        WholeFile::RC4File(f) => {
+            if f.check_password(password) {
+                println!("Correct password!");
+                println!("Decrypting...");
+                let decrypted = f.decrypt(&content, password);
+                write_bytes_to_file(&decrypted, output_file)?;
+                Ok(())
+            } else {
+                Err(anyhow!("Wrong password!\nCannot decrypt!"))
             }
-            WholeFile::AESFile(f) => {
-                if f.check_password(password) {
-                    println!("Correct password!");
-                    println!("Decrypting...");
-                    let decrypted = match f.decrypt(&content, password) {
-                        Ok(decrypted) => {
-                            println!("Decrypted correctly");
-                            decrypted
-                        }
-                        Err(decrypted) => {
-                            println!("Decryption completed, but HMAC check failed - file has been modified!");
-                            decrypted
-                        }
-                    };
-                    write_bytes_to_file(&decrypted, output_file).expect("Can't write output file");
-                } else {
-                    println!("Wrong password!");
-                    println!("Cannot decrypt!");
-                }
-            }
-            WholeFile::PlainTextFile(_) => {
-                println!("No decryption needed!");
-            }
-            WholeFile::InvalidFile => println!("Invalid file!"),
-        };
-    } else {
-        println!("cannot read the input file");
-    }
-}
-
-fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str) {
-    println!("** Encrypt Backup **");
-    if let Ok(content) = read_file_to_bytes(input_file) {
-        match WholeFile::parse(&content) {
-            WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
-                println!("RouterOS Encrypted Backup");
-                println!("No encryption needed!");
-            }
-            WholeFile::PlainTextFile(f) => {
-                println!("RouterOS Plaintext Backup");
-                println!("Length: {} bytes", f.header.length);
-                let encrypted = match algo {
-                    "RC4" => {
-                        println!("encrypt rc4");
-                        RC4File::encrypt(&content, password)
+        }
+        WholeFile::AESFile(f) => {
+            if f.check_password(password) {
+                println!("Correct password!");
+                println!("Decrypting...");
+                let decrypted = match f.decrypt(&content, password) {
+                    Ok(decrypted) => {
+                        println!("Decrypted correctly");
+                        decrypted
                     }
-                    "AES" => {
-                        println!("encrypt aes");
-                        AESFile::encrypt(&content, password)
-                    }
-                    _ => {
-                        panic!("invalid encryption algorithm");
+                    Err(decrypted) => {
+                        println!(
+                            "Decryption completed, but HMAC check failed - file has been modified!"
+                        );
+                        decrypted
                     }
                 };
-                write_bytes_to_file(&encrypted, output_file).expect("Can't write output file");
+                write_bytes_to_file(&decrypted, output_file)?;
+                Ok(())
+            } else {
+                Err(anyhow!("Wrong password!\nCannot decrypt!"))
             }
-            WholeFile::InvalidFile => println!("Invalid file!"),
-        };
-    } else {
-        println!("cannot read the input file");
+        }
+        WholeFile::PlainTextFile(_) => Err(anyhow!("No decryption needed!")),
+        WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
     }
 }
 
-fn unpack_file(input_file: &str, output_dir: &str) {
+fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str) -> Result<()> {
+    println!("** Encrypt Backup **");
+    let content = read_file_to_bytes(input_file)?;
+    match WholeFile::parse(&content) {
+        WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
+            println!("RouterOS Encrypted Backup");
+            println!("No encryption needed!");
+            Ok(())
+        }
+        WholeFile::PlainTextFile(f) => {
+            println!("RouterOS Plaintext Backup");
+            println!("Length: {} bytes", f.header.length);
+            let encrypted = match algo {
+                "RC4" => {
+                    println!("encrypt rc4");
+                    RC4File::encrypt(&content, password)
+                }
+                "AES" => {
+                    println!("encrypt aes");
+                    AESFile::encrypt(&content, password)
+                }
+                _ => {
+                    return Err(anyhow!("invalid encryption algorithm"));
+                }
+            };
+            write_bytes_to_file(&encrypted, output_file)?;
+            Ok(())
+        }
+        WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
+    }
+}
+
+fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
     // println!("unpack {} {}", input_file, output_dir);
     println!("** Unpack Backup **");
     let output_dir = Path::new(output_dir);
     if output_dir.exists() {
-        println!(
+        return Err(anyhow!(
             "Directory {} already exists, cannot extract!",
             output_dir.display()
-        );
-        return;
+        ));
     }
 
-    if let Ok(content) = read_file_to_bytes(input_file) {
-        match WholeFile::parse(&content) {
-            WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
-                println!("RouterOS Encrypted Backup");
-                println!("Cannot unpack encrypted backup!");
-                println!("Decrypt backup first!");
-            }
-            WholeFile::PlainTextFile(f) => {
-                println!("RouterOS Plaintext Backup");
-                println!("Length: {} bytes", f.header.length);
-                println!("Extracting backup...");
-                let unpacked_files = f.unpack_files(&content);
-                let files_num = unpacked_files.len();
-                if files_num > 0 {
-                    if fs::create_dir(output_dir).is_ok() {
-                        for f in unpacked_files.iter() {
-                            let idx = output_dir
-                                .join(Path::new(&format!("{}.idx", &f.name)))
-                                .into_os_string()
-                                .into_string()
-                                .unwrap();
-                            let dat = output_dir
-                                .join(Path::new(&format!("{}.dat", &f.name)))
-                                .into_os_string()
-                                .into_string()
-                                .unwrap();
-                            if write_bytes_to_file(&f.idx, &idx).is_err() {
-                                println!("Cannot write {}", idx);
-                            }
-                            if write_bytes_to_file(&f.dat, &dat).is_err() {
-                                println!("Cannot write {}", dat);
-                            }
+    let content = read_file_to_bytes(input_file)?;
+    match WholeFile::parse(&content) {
+        WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
+            println!("RouterOS Encrypted Backup");
+            println!("Cannot unpack encrypted backup!");
+            println!("Decrypt backup first!");
+            Ok(())
+        }
+        WholeFile::PlainTextFile(f) => {
+            println!("RouterOS Plaintext Backup");
+            println!("Length: {} bytes", f.header.length);
+            println!("Extracting backup...");
+            let unpacked_files = f.unpack_files(&content);
+            let files_num = unpacked_files.len();
+            if files_num > 0 {
+                if fs::create_dir(output_dir).is_ok() {
+                    for f in unpacked_files.iter() {
+                        let idx = output_dir
+                            .join(Path::new(&format!("{}.idx", &f.name)))
+                            .into_os_string()
+                            .into_string()
+                            .unwrap();
+                        let dat = output_dir
+                            .join(Path::new(&format!("{}.dat", &f.name)))
+                            .into_os_string()
+                            .into_string()
+                            .unwrap();
+                        if write_bytes_to_file(&f.idx, &idx).is_err() {
+                            println!("Cannot write {}", idx);
                         }
-                        println!(
-                            "Wrote {} files pair in: {}",
-                            files_num,
-                            output_dir.display()
-                        );
-                    } else {
-                        println!("Cannot create the {} directory", output_dir.display());
+                        if write_bytes_to_file(&f.dat, &dat).is_err() {
+                            println!("Cannot write {}", dat);
+                        }
                     }
+                    println!(
+                        "Wrote {} files pair in: {}",
+                        files_num,
+                        output_dir.display()
+                    );
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "Cannot create the {} directory",
+                        output_dir.display()
+                    ))
                 }
+            } else {
+                Ok(())
             }
-            WholeFile::InvalidFile => println!("Invalid file!"),
-        };
-    } else {
-        println!("cannot read the input file");
+        }
+        WholeFile::InvalidFile => Err(anyhow!("Invalid file!")),
     }
 }
 
-fn pack_file(input_dir: &str, output_file: &str) {
+fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
     println!("** Pack Backup **");
     let mut files_to_pack: Vec<PackedFile> = Vec::new();
     let input_dir = Path::new(input_dir);
     if !input_dir.exists() {
-        println!("The input directory {} does not exist", input_dir.display());
-        return;
+        return Err(anyhow!(
+            "The input directory {} does not exist",
+            input_dir.display()
+        ));
     }
     if !input_dir.is_dir() {
-        println!("{} is not a directory", input_dir.display());
+        return Err(anyhow!("{} is not a directory", input_dir.display()));
     }
-    let files = fs::read_dir(input_dir).unwrap();
+    let files = fs::read_dir(input_dir)?;
     for f in files.flatten() {
         let path = f.path();
         let extension_obj = path.extension();
@@ -217,48 +221,40 @@ fn pack_file(input_dir: &str, output_file: &str) {
             output_file
         );
         let packed = PlainTextFile::pack_files(&files_to_pack);
-        if let Err(e) = write_bytes_to_file(&packed, output_file) {
-            println!("Error writing the packed file {}", e);
-        }
+        write_bytes_to_file(&packed, output_file)?;
     }
+    Ok(())
 }
 
-fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) {
+fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Result<()> {
     println!("** Bruteforce Backup Password **");
     if !parallel {
         rayon::ThreadPoolBuilder::new()
             .num_threads(1)
-            .build_global()
-            .unwrap();
+            .build_global()?;
     }
-    info_file(input_file);
-    if let Ok(wordlist) = read_wordlist_file(wordlist_file) {
-        if let Ok(content) = read_file_to_bytes(input_file) {
-            match WholeFile::parse(&content) {
-                WholeFile::RC4File(f) => {
-                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                        println!("Password found: {}", found);
-                    } else {
-                        println!("Password NOT found");
-                    }
-                }
-                WholeFile::AESFile(f) => {
-                    if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                        println!("Password found: {}", found);
-                    } else {
-                        println!("Password NOT found");
-                    }
-                }
-                WholeFile::PlainTextFile(_) => {
-                    println!("No Decryption Needed.")
-                }
-                WholeFile::InvalidFile => println!("Invalid File"),
-            };
-        } else {
-            println!("cannot read the file");
+    info_file(input_file)?;
+    let wordlist = read_wordlist_file(wordlist_file)?;
+    let content = read_file_to_bytes(input_file)?;
+    match WholeFile::parse(&content) {
+        WholeFile::RC4File(f) => {
+            if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
+                println!("Password found: {}", found);
+            } else {
+                println!("Password NOT found");
+            }
+            Ok(())
         }
-    } else {
-        println!("cannot read the wordlist");
+        WholeFile::AESFile(f) => {
+            if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
+                println!("Password found: {}", found);
+            } else {
+                println!("Password NOT found");
+            }
+            Ok(())
+        }
+        WholeFile::PlainTextFile(_) => Err(anyhow!("No Decryption Needed.")),
+        WholeFile::InvalidFile => Err(anyhow!("Invalid File")),
     }
 }
 
@@ -389,7 +385,7 @@ fn main() -> Result<()> {
                 ),
         )
         .get_matches();
-    match matches.subcommand() {
+    let result = match matches.subcommand() {
         Some(("info", sub_m)) => info_file(sub_m.value_of("input").unwrap()),
         Some(("decrypt", sub_m)) => decrypt_file(
             sub_m.value_of("input").unwrap(),
@@ -415,7 +411,10 @@ fn main() -> Result<()> {
             sub_m.value_of("wordlist").unwrap(),
             sub_m.is_present("parallel"),
         ),
-        _ => unimplemented!(),
+        _ => Ok(()),
     };
+    if let Err(e) = result {
+        eprintln!("{}", e);
+    }
     Ok(())
 }
