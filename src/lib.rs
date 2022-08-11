@@ -5,10 +5,11 @@ use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
 use binwrite::BinWrite;
 use crypto::aes;
 use crypto::aes::KeySize;
-use crypto::rc4::Rc4;
 use crypto::symmetriccipher::SynchronousStreamCipher;
-use hmac::{Hmac, Mac};
+use hmac_sha256::HMAC;
 use rand::Rng;
+use rc4::Rc4;
+use rc4::{KeyInit, StreamCipher};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
@@ -20,10 +21,8 @@ const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
 const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
 const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
 
-type HmacSha256 = Hmac<Sha256>;
-
 /// Common Header for the router files
-#[derive(BinRead, PartialEq, Debug)]
+#[derive(BinRead, PartialEq, Debug, Eq)]
 pub struct Header {
     /// Magic to identify the filetype
     pub magic: u32,
@@ -39,7 +38,7 @@ impl Header {
 }
 
 /// RC4 type of file, encrypted with the rc4
-#[derive(BinRead, PartialEq, Debug)]
+#[derive(BinRead, PartialEq, Debug, Eq)]
 pub struct RC4File {
     /// The generic header
     pub header: Header,
@@ -58,11 +57,10 @@ impl RC4File {
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
         let mut rc4 = Rc4::new(&hash);
-        let skip: Vec<u8> = vec![0; 0x300];
         let mut skip_out: Vec<u8> = vec![0; 0x300];
-        rc4.process(&skip, &mut skip_out);
-        let mut output: Vec<u8> = vec![0; 4];
-        rc4.process(&self.magic_check.to_le_bytes(), &mut output);
+        rc4.apply_keystream(&mut skip_out);
+        let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
+        rc4.apply_keystream(&mut output);
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
@@ -74,17 +72,16 @@ impl RC4File {
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
         let mut rc4 = Rc4::new(&hash);
-        let skip: Vec<u8> = vec![0; 0x300];
         let mut skip_out: Vec<u8> = vec![0; 0x300];
-        rc4.process(&skip, &mut skip_out);
-        let mut output: Vec<u8> = vec![0; 4];
-        rc4.process(&self.magic_check.to_le_bytes(), &mut output);
+        rc4.apply_keystream(&mut skip_out);
+        let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
+        rc4.apply_keystream(&mut output);
         let to_decrypt = &file_content[44..]; // skip magic, length, salt, magic_check
         decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
         let content_len: u32 = (file_content.len() - 44 + 8).try_into().unwrap();
         decrypted.append(&mut content_len.to_le_bytes().to_vec());
-        let mut temp: Vec<u8> = vec![0; file_content.len() - 44];
-        rc4.process(to_decrypt, &mut temp);
+        let mut temp: Vec<u8> = to_decrypt.to_vec();
+        rc4.apply_keystream(&mut temp);
         decrypted.append(&mut temp);
         decrypted
     }
@@ -98,25 +95,24 @@ impl RC4File {
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
         let mut rc4 = Rc4::new(&hash);
-        let skip: Vec<u8> = vec![0; 0x300];
         let mut skip_out: Vec<u8> = vec![0; 0x300];
-        rc4.process(&skip, &mut skip_out);
+        rc4.apply_keystream(&mut skip_out);
         encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
         let content_len: u32 = (file_content.len() - 8).try_into().unwrap();
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
         encrypted.append(&mut salt.to_vec());
-        let mut output: Vec<u8> = vec![0; 4];
-        rc4.process(&MAGIC_PLAINTEXT.to_le_bytes(), &mut output);
+        let mut output: Vec<u8> = MAGIC_PLAINTEXT.to_le_bytes().into();
+        rc4.apply_keystream(&mut output);
         encrypted.append(&mut output);
-        let mut temp: Vec<u8> = vec![0; content_len as usize];
-        rc4.process(&file_content[8..], &mut temp);
+        let mut temp: Vec<u8> = file_content[8..].to_vec();
+        rc4.apply_keystream(&mut temp);
         encrypted.append(&mut temp);
         encrypted
     }
 }
 
 /// AES encrypted file type
-#[derive(BinRead, PartialEq, Debug)]
+#[derive(BinRead, PartialEq, Debug, Eq)]
 pub struct AESFile {
     /// Common header
     pub header: Header,
@@ -156,7 +152,7 @@ impl AESFile {
         let finalized = hasher.finalize();
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
-        let mut hmac = HmacSha256::new_from_slice(hash_hmac).expect("failed to create HmacSha256");
+        let mut hmac = HMAC::new(hash_hmac);
         let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &self.salt[0..16]);
         let skip: Vec<u8> = vec![0; 0x10];
         let mut skip_out: Vec<u8> = vec![0; 0x10];
@@ -172,9 +168,11 @@ impl AESFile {
         decrypted.append(&mut temp);
         hmac.update(&self.magic_check.to_le_bytes());
         hmac.update(to_decrypt);
-        match hmac.verify_slice(&self.signature) {
-            Ok(_) => Ok(decrypted),
-            Err(_) => Err(decrypted),
+        let verified = hmac.finalize();
+        if self.signature.len() == verified.len() && verified.to_vec() == self.signature {
+            Ok(decrypted)
+        } else {
+            Err(decrypted)
         }
     }
 
@@ -192,7 +190,7 @@ impl AESFile {
         let finalized = hasher.finalize();
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
-        let mut hmac = HmacSha256::new_from_slice(hash_hmac).expect("failed to create HmacSha256");
+        let mut hmac = HMAC::new(hash_hmac);
         let mut aes_ctr = aes::ctr(KeySize::KeySize128, hash, &salt[0..16]);
         let skip: Vec<u8> = vec![0; 0x10];
         let mut skip_out: Vec<u8> = vec![0; 0x10];
@@ -203,7 +201,7 @@ impl AESFile {
         let mut temp: Vec<u8> = vec![0; content_len as usize];
         aes_ctr.process(&file_content[8..], &mut temp);
         hmac.update(&temp);
-        let into_bytes = hmac.finalize().into_bytes();
+        let into_bytes = hmac.finalize();
         encrypted.append(&mut into_bytes.as_slice().to_vec());
         encrypted.append(&mut output);
         encrypted.append(&mut temp);
@@ -211,7 +209,7 @@ impl AESFile {
     }
 }
 
-#[derive(BinRead, PartialEq, Debug, BinWrite)]
+#[derive(BinRead, PartialEq, Debug, BinWrite, Eq)]
 #[binwrite(little)]
 struct PackedItem {
     len: u32,
@@ -219,7 +217,7 @@ struct PackedItem {
     content: Vec<u8>,
 }
 
-#[derive(BinRead, PartialEq, Debug, BinWrite)]
+#[derive(BinRead, PartialEq, Debug, BinWrite, Eq)]
 #[binwrite(little)]
 struct PackedTriple {
     name: PackedItem,
@@ -228,7 +226,7 @@ struct PackedTriple {
 }
 
 /// Structure representing a packed file, with a name, idx and dat
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Eq)]
 pub struct PackedFile {
     /// Filename
     pub name: String,
@@ -239,7 +237,7 @@ pub struct PackedFile {
 }
 
 /// Plaintext unencrypted file
-#[derive(BinRead, PartialEq, Debug)]
+#[derive(BinRead, PartialEq, Debug, Eq)]
 pub struct PlainTextFile {
     /// Common header
     pub header: Header,
@@ -303,7 +301,7 @@ impl PlainTextFile {
 }
 
 /// Enum of all the possible RouterOS filetypes
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Eq)]
 pub enum WholeFile {
     /// RC4 Encrypted type
     RC4File(RC4File),
