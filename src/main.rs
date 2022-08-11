@@ -46,7 +46,7 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<(
             if f.check_password(password) {
                 println!("Correct password!");
                 println!("Decrypting...");
-                let decrypted = f.decrypt(&content, password);
+                let decrypted = f.decrypt(&content, password)?;
                 write_bytes_to_file(&decrypted, output_file)?;
                 Ok(())
             } else {
@@ -104,7 +104,7 @@ fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str)
                 _ => {
                     return Err(anyhow!("invalid encryption algorithm"));
                 }
-            };
+            }?;
             write_bytes_to_file(&encrypted, output_file)?;
             Ok(())
         }
@@ -217,7 +217,7 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
             input_dir.display(),
             output_file
         );
-        let packed = PlainTextFile::pack_files(&files_to_pack);
+        let packed = PlainTextFile::pack_files(&files_to_pack)?;
         write_bytes_to_file(&packed, output_file)?;
     }
     Ok(())

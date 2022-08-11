@@ -121,6 +121,7 @@ mod tests {
             assert_eq!(
                 decrypted_content,
                 f.decrypt(&file_content, "modificailrouter")
+                    .expect("cannot decrypt")
             );
         } else {
             panic!("We didn't get a RC4File");
@@ -141,7 +142,7 @@ mod tests {
         if let WholeFile::AESFile(f) = WholeFile::parse(&file_content) {
             assert_eq!(
                 decrypted_content,
-                f.decrypt(&file_content, "aespass").unwrap()
+                f.decrypt(&file_content, "aespass").expect("cannot decrypt")
             );
         } else {
             panic!("We didn't get a AESFile");
@@ -151,9 +152,12 @@ mod tests {
     #[test]
     fn check_rc4_encryption() {
         let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
-        let encrypted = RC4File::encrypt(&decrypted_content, "rc4pass");
+        let encrypted = RC4File::encrypt(&decrypted_content, "rc4pass").expect("cannot encrypt");
         if let WholeFile::RC4File(f) = WholeFile::parse(&encrypted) {
-            assert_eq!(decrypted_content, f.decrypt(&encrypted, "rc4pass"));
+            assert_eq!(
+                decrypted_content,
+                f.decrypt(&encrypted, "rc4pass").expect("cannot decrypt")
+            );
         } else {
             panic!("We didn't get a RC4File");
         }
@@ -162,9 +166,12 @@ mod tests {
     #[test]
     fn check_aes_encryption() {
         let decrypted_content: Vec<u8> = vec![0x88, 0xac, 0xa1, 0xb1, 0x08, 0x00, 0x00, 0x00];
-        let encrypted = AESFile::encrypt(&decrypted_content, "aespass");
+        let encrypted = AESFile::encrypt(&decrypted_content, "aespass").expect("cannot encrypt");
         if let WholeFile::AESFile(f) = WholeFile::parse(&encrypted) {
-            assert_eq!(decrypted_content, f.decrypt(&encrypted, "aespass").unwrap());
+            assert_eq!(
+                decrypted_content,
+                f.decrypt(&encrypted, "aespass").expect("cannot decrypt")
+            );
         } else {
             panic!("We didn't get a AESFile");
         }
@@ -197,7 +204,7 @@ mod tests {
             idx: vec![3; 7],
             dat: vec![4; 8],
         });
-        let packed = PlainTextFile::pack_files(&files);
+        let packed = PlainTextFile::pack_files(&files).expect("cannot pack");
         match WholeFile::parse(&packed) {
             WholeFile::PlainTextFile(f) => {
                 let unpacked = f.unpack_files(&packed);

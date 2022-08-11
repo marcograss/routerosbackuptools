@@ -15,6 +15,8 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
 use std::str;
 
+use anyhow::Result;
+
 mod tests;
 
 const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
@@ -67,7 +69,7 @@ impl RC4File {
     }
 
     /// decrypt the rc4 file content
-    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Vec<u8> {
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha1::new();
         hasher.update(&self.salt);
@@ -80,16 +82,16 @@ impl RC4File {
         rc4.apply_keystream(&mut output);
         let to_decrypt = &file_content[44..]; // skip magic, length, salt, magic_check
         decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
-        let content_len: u32 = (file_content.len() - 44 + 8).try_into().unwrap();
+        let content_len: u32 = (file_content.len() - 44 + 8).try_into()?;
         decrypted.append(&mut content_len.to_le_bytes().to_vec());
         let mut temp: Vec<u8> = to_decrypt.to_vec();
         rc4.apply_keystream(&mut temp);
         decrypted.append(&mut temp);
-        decrypted
+        Ok(decrypted)
     }
 
     /// Encrypt a file content to this rc4 format
-    pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
+    pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
         let mut hasher = Sha1::new();
@@ -100,7 +102,7 @@ impl RC4File {
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
-        let content_len: u32 = (file_content.len() - 8).try_into().unwrap();
+        let content_len: u32 = (file_content.len() - 8).try_into()?;
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
         encrypted.append(&mut salt.to_vec());
         let mut output: Vec<u8> = MAGIC_PLAINTEXT.to_le_bytes().into();
@@ -109,7 +111,7 @@ impl RC4File {
         let mut temp: Vec<u8> = file_content[8..].to_vec();
         rc4.apply_keystream(&mut temp);
         encrypted.append(&mut temp);
-        encrypted
+        Ok(encrypted)
     }
 }
 
@@ -177,11 +179,11 @@ impl AESFile {
     }
 
     /// Encrypt the file to AES type
-    pub fn encrypt(file_content: &[u8], password: &str) -> Vec<u8> {
+    pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
         encrypted.append(&mut MAGIC_ENCRYPTED_AES.to_le_bytes().to_vec());
-        let content_len: u32 = (file_content.len() - 8).try_into().unwrap();
+        let content_len: u32 = (file_content.len() - 8).try_into()?;
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
         encrypted.append(&mut salt.clone().to_vec());
         let mut hasher = Sha256::new();
@@ -204,7 +206,7 @@ impl AESFile {
         encrypted.append(&mut into_bytes.as_slice().to_vec());
         encrypted.append(&mut output);
         encrypted.append(&mut temp);
-        encrypted
+        Ok(encrypted)
     }
 }
 
@@ -268,7 +270,7 @@ impl PlainTextFile {
     }
 
     /// Pack files to a decrypted file
-    pub fn pack_files(files: &[PackedFile]) -> Vec<u8> {
+    pub fn pack_files(files: &[PackedFile]) -> Result<Vec<u8>> {
         let mut packed: Vec<u8> = Vec::new();
         for f in files.iter() {
             let name_vec: Vec<u8> = f.name.clone().into_bytes();
@@ -287,7 +289,7 @@ impl PlainTextFile {
                 },
             };
             let mut tmp: Vec<u8> = Vec::new();
-            t.write(&mut tmp).unwrap();
+            t.write(&mut tmp)?;
             packed.append(&mut tmp);
         }
         let content_len: u32 = (packed.len() - 4) as u32;
@@ -295,7 +297,7 @@ impl PlainTextFile {
         header.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
         header.append(&mut content_len.to_le_bytes().to_vec());
         header.append(&mut packed);
-        header
+        Ok(header)
     }
 }
 
