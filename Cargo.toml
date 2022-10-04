@@ -3,7 +3,7 @@ authors = ["marcograss"]
 description = "Tool to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files"
 edition = "2021"
 name = "routerosbackuptools"
-version = "0.1.2"
+version = "0.1.3"
 
 [dependencies]
 aes = "0.8.1"
