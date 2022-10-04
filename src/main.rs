@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use clap::{App, Arg, SubCommand};
+use clap::{builder::PossibleValue, Arg, ArgAction, Command};
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
@@ -256,157 +256,144 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Res
 }
 
 fn main() -> Result<()> {
-    let matches = App::new("routerosbackuptools")
-        .version("1.0")
-        .author("marcograss <marco.gra@gmail.com>")
-        .about("Tool to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files")
+    let matches = Command::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
         .subcommand(
-            SubCommand::with_name("info").arg(
-                Arg::with_name("input")
+            Command::new("info").arg(
+                Arg::new("input")
                     .short('i')
                     .help("input file")
-                    .required(true)
-                    .takes_value(true),
+                    .required(true),
             ),
         )
         .subcommand(
-            SubCommand::with_name("decrypt")
+            Command::new("decrypt")
                 .arg(
-                    Arg::with_name("input")
+                    Arg::new("input")
                         .short('i')
                         .help("encrypted input file")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("output")
+                    Arg::new("output")
                         .short('o')
                         .help("decrypted output file")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("password")
+                    Arg::new("password")
                         .short('p')
                         .help("encryption password")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("encrypt")
+            Command::new("encrypt")
                 .arg(
-                    Arg::with_name("input")
+                    Arg::new("input")
                         .short('i')
                         .help("input file to encrypt")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("output")
+                    Arg::new("output")
                         .short('o')
                         .help("encrypted output file")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("password")
+                    Arg::new("password")
                         .short('p')
                         .help("encryption password")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("algo")
+                    Arg::new("algo")
                         .short('e')
                         .help("encryption algorithm")
                         .required(true)
-                        .takes_value(true)
-                        .possible_values(&["AES", "RC4"]),
+                        .value_parser([PossibleValue::new("AES"), PossibleValue::new("RC4")]),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("unpack")
+            Command::new("unpack")
                 .arg(
-                    Arg::with_name("input")
+                    Arg::new("input")
                         .short('i')
                         .help("input file to unpack")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("directory")
+                    Arg::new("directory")
                         .short('d')
                         .help("output directory")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("pack")
+            Command::new("pack")
                 .arg(
-                    Arg::with_name("output")
+                    Arg::new("output")
                         .short('o')
                         .help("packed output file")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("directory")
+                    Arg::new("directory")
                         .short('d')
                         .help("input directory to pack")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("bruteforce")
+            Command::new("bruteforce")
                 .arg(
-                    Arg::with_name("input")
+                    Arg::new("input")
                         .short('i')
                         .help("encrypted input file")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("wordlist")
+                    Arg::new("wordlist")
                         .short('w')
                         .help("wordlist txt with the passwords to try")
-                        .required(true)
-                        .takes_value(true),
+                        .required(true),
                 )
                 .arg(
-                    Arg::with_name("parallel")
+                    Arg::new("parallel")
                         .short('p')
-                        .help("bruteforce with parallelism"),
+                        .help("bruteforce with parallelism")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .get_matches();
     let result = match matches.subcommand() {
-        Some(("info", sub_m)) => info_file(sub_m.value_of("input").unwrap()),
+        Some(("info", sub_m)) => info_file(sub_m.get_one::<String>("input").unwrap()),
         Some(("decrypt", sub_m)) => decrypt_file(
-            sub_m.value_of("input").unwrap(),
-            sub_m.value_of("output").unwrap(),
-            sub_m.value_of("password").unwrap(),
+            sub_m.get_one::<String>("input").unwrap(),
+            sub_m.get_one::<String>("output").unwrap(),
+            sub_m.get_one::<String>("password").unwrap(),
         ),
         Some(("encrypt", sub_m)) => encrypt_file(
-            sub_m.value_of("input").unwrap(),
-            sub_m.value_of("output").unwrap(),
-            sub_m.value_of("password").unwrap(),
-            sub_m.value_of("algo").unwrap(),
+            sub_m.get_one::<String>("input").unwrap(),
+            sub_m.get_one::<String>("output").unwrap(),
+            sub_m.get_one::<String>("password").unwrap(),
+            sub_m.get_one::<String>("algo").unwrap(),
         ),
         Some(("unpack", sub_m)) => unpack_file(
-            sub_m.value_of("input").unwrap(),
-            sub_m.value_of("directory").unwrap(),
+            sub_m.get_one::<String>("input").unwrap(),
+            sub_m.get_one::<String>("directory").unwrap(),
         ),
         Some(("pack", sub_m)) => pack_file(
-            sub_m.value_of("directory").unwrap(),
-            sub_m.value_of("output").unwrap(),
+            sub_m.get_one::<String>("directory").unwrap(),
+            sub_m.get_one::<String>("output").unwrap(),
         ),
         Some(("bruteforce", sub_m)) => bruteforce_file(
-            sub_m.value_of("input").unwrap(),
-            sub_m.value_of("wordlist").unwrap(),
-            sub_m.is_present("parallel"),
+            sub_m.get_one::<String>("input").unwrap(),
+            sub_m.get_one::<String>("wordlist").unwrap(),
+            sub_m.get_flag("parallel"),
         ),
         _ => Ok(()),
     };
