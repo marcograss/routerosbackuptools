@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader, Read};
 use std::str;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 mod tests;
 
@@ -36,9 +36,8 @@ pub struct Header {
 
 impl Header {
     /// Parse a header from raw bytes
-    #[must_use]
-    pub fn parse(raw: &[u8]) -> Header {
-        Cursor::new(raw).read_le().unwrap()
+    pub fn parse(raw: &[u8]) -> Result<Header> {
+        Cursor::new(raw).read_le().map_err(|e| anyhow!(e))
     }
 }
 
@@ -71,7 +70,7 @@ impl RC4File {
     }
 
     /// decrypt the rc4 file content
-    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<Vec<u8>> {
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<DecryptionResult> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha1::new();
         hasher.update(&self.salt);
@@ -89,7 +88,7 @@ impl RC4File {
         let mut temp: Vec<u8> = to_decrypt.to_vec();
         rc4.apply_keystream(&mut temp);
         decrypted.append(&mut temp);
-        Ok(decrypted)
+        Ok(DecryptionResult::Correct(decrypted))
     }
 
     /// Encrypt a file content to this rc4 format
@@ -133,6 +132,24 @@ pub struct AESFile {
     pub magic_check: u32,
 }
 
+/// Distinguish if decryption is successful and if the signature is wrong
+pub enum DecryptionResult {
+    /// The decryption was as expected
+    Correct(Vec<u8>),
+    /// The decryption succeded but the signature was wrong
+    WrongSignature(Vec<u8>),
+}
+
+impl DecryptionResult {
+    /// get back the underlying data Vec<u8>
+    #[must_use]
+    pub fn as_vec(self) -> Vec<u8> {
+        match self {
+            DecryptionResult::Correct(v) | DecryptionResult::WrongSignature(v) => v,
+        }
+    }
+}
+
 impl AESFile {
     /// Check if the AES file password is correct or not
     #[must_use]
@@ -150,7 +167,7 @@ impl AESFile {
     }
 
     /// Decrypt the AES file
-    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<Vec<u8>, Vec<u8>> {
+    pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<DecryptionResult> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha256::new();
         hasher.update(&self.salt);
@@ -166,7 +183,7 @@ impl AESFile {
         aes_ctr.apply_keystream(&mut output);
         let to_decrypt = &file_content[76..]; // skip magic, length, salt/nonce, hmac magic_check
         decrypted.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
-        let content_len: u32 = (file_content.len() - 76 + 8).try_into().unwrap();
+        let content_len: u32 = (file_content.len() - 76 + 8).try_into()?;
         decrypted.append(&mut content_len.to_le_bytes().to_vec());
         let mut temp: Vec<u8> = to_decrypt.to_vec();
         aes_ctr.apply_keystream(&mut temp);
@@ -175,9 +192,9 @@ impl AESFile {
         hmac.update(to_decrypt);
         let verified = hmac.finalize();
         if self.signature.len() == verified.len() && verified.to_vec() == self.signature {
-            Ok(decrypted)
+            Ok(DecryptionResult::Correct(decrypted))
         } else {
-            Err(decrypted)
+            Ok(DecryptionResult::WrongSignature(decrypted))
         }
     }
 
@@ -249,8 +266,7 @@ pub struct PlainTextFile {
 
 impl PlainTextFile {
     /// Unpack a decrypted file
-    #[must_use]
-    pub fn unpack_files(&self, file_content: &[u8]) -> Vec<PackedFile> {
+    pub fn unpack_files(&self, file_content: &[u8]) -> Result<Vec<PackedFile>> {
         let mut files: Vec<PackedFile> = Vec::new();
         let file_content = &file_content[8..];
         let mut extracted: Vec<PackedTriple> = Vec::new();
@@ -260,17 +276,17 @@ impl PlainTextFile {
             if r.is_err() {
                 break;
             }
-            let e = r.unwrap();
+            let e = r?;
             extracted.push(e);
         }
         for c in &extracted {
             files.push(PackedFile {
-                name: str::from_utf8(&c.name.content).unwrap().to_string(),
+                name: str::from_utf8(&c.name.content)?.to_string(),
                 idx: c.idx.content.clone(),
                 dat: c.dat.content.clone(),
             });
         }
-        files
+        Ok(files)
     }
 
     /// Pack files to a decrypted file
@@ -280,15 +296,15 @@ impl PlainTextFile {
             let name_vec: Vec<u8> = f.name.clone().into_bytes();
             let t = PackedTriple {
                 name: PackedItem {
-                    len: (name_vec.len() as u32),
+                    len: name_vec.len().try_into()?,
                     content: name_vec,
                 },
                 idx: PackedItem {
-                    len: f.idx.len() as u32,
+                    len: f.idx.len().try_into()?,
                     content: f.idx.clone(),
                 },
                 dat: PackedItem {
-                    len: f.dat.len() as u32,
+                    len: f.dat.len().try_into()?,
                     content: f.dat.clone(),
                 },
             };
@@ -296,7 +312,7 @@ impl PlainTextFile {
             t.write(&mut tmp)?;
             packed.append(&mut tmp);
         }
-        let content_len: u32 = (packed.len() - 4) as u32;
+        let content_len: u32 = (packed.len() - 4).try_into()?;
         let mut header: Vec<u8> = Vec::new();
         header.append(&mut MAGIC_PLAINTEXT.to_le_bytes().to_vec());
         header.append(&mut content_len.to_le_bytes().to_vec());
@@ -320,15 +336,14 @@ pub enum WholeFile {
 
 impl WholeFile {
     /// Parse raw bytes into one of the file types
-    #[must_use]
-    pub fn parse(raw: &[u8]) -> WholeFile {
-        let h: Header = Header::parse(raw);
-        match h.magic {
-            MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_le().unwrap()),
-            MAGIC_ENCRYPTED_AES => WholeFile::AESFile(Cursor::new(raw).read_le().unwrap()),
-            MAGIC_PLAINTEXT => WholeFile::PlainTextFile(Cursor::new(raw).read_le().unwrap()),
+    pub fn parse(raw: &[u8]) -> Result<WholeFile> {
+        let h: Header = Header::parse(raw)?;
+        Ok(match h.magic {
+            MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_le()?),
+            MAGIC_ENCRYPTED_AES => WholeFile::AESFile(Cursor::new(raw).read_le()?),
+            MAGIC_PLAINTEXT => WholeFile::PlainTextFile(Cursor::new(raw).read_le()?),
             _ => WholeFile::InvalidFile,
-        }
+        })
     }
 }
 

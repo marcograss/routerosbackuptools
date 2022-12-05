@@ -5,14 +5,15 @@ use std::fs;
 use std::path::Path;
 
 use routerosbackuptools::{
-    read_file_to_bytes, read_wordlist_file, write_bytes_to_file, AESFile, PackedFile,
-    PlainTextFile, RC4File, WholeFile,
+    read_file_to_bytes, read_wordlist_file, write_bytes_to_file, AESFile, DecryptionResult,
+    PackedFile, PlainTextFile, RC4File, WholeFile,
 };
 
 fn info_file(input_file: &str) -> Result<()> {
     println!("** Backup Info **");
     let content = read_file_to_bytes(input_file)?;
-    match WholeFile::parse(&content) {
+    let parsed_whole = WholeFile::parse(&content)?;
+    match parsed_whole {
         WholeFile::RC4File(f) => {
             println!("RouterOS Encrypted Backup (rc4-sha1)");
             println!("Length: {} bytes", f.header.length);
@@ -41,12 +42,13 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<(
     println!("** Decrypt Backup **");
     info_file(input_file)?;
     let content = read_file_to_bytes(input_file)?;
-    match WholeFile::parse(&content) {
+    let parsed_whole = WholeFile::parse(&content)?;
+    match parsed_whole {
         WholeFile::RC4File(f) => {
             if f.check_password(password) {
                 println!("Correct password!");
                 println!("Decrypting...");
-                let decrypted = f.decrypt(&content, password)?;
+                let decrypted = f.decrypt(&content, password)?.as_vec();
                 write_bytes_to_file(&decrypted, output_file)?;
                 Ok(())
             } else {
@@ -57,12 +59,12 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<(
             if f.check_password(password) {
                 println!("Correct password!");
                 println!("Decrypting...");
-                let decrypted = match f.decrypt(&content, password) {
-                    Ok(decrypted) => {
+                let decrypted = match f.decrypt(&content, password)? {
+                    DecryptionResult::Correct(decrypted) => {
                         println!("Decrypted correctly");
                         decrypted
                     }
-                    Err(decrypted) => {
+                    DecryptionResult::WrongSignature(decrypted) => {
                         println!(
                             "Decryption completed, but HMAC check failed - file has been modified!"
                         );
@@ -83,7 +85,8 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<(
 fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str) -> Result<()> {
     println!("** Encrypt Backup **");
     let content = read_file_to_bytes(input_file)?;
-    match WholeFile::parse(&content) {
+    let parsed_whole = WholeFile::parse(&content)?;
+    match parsed_whole {
         WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
             println!("RouterOS Encrypted Backup");
             println!("No encryption needed!");
@@ -113,7 +116,6 @@ fn encrypt_file(input_file: &str, output_file: &str, password: &str, algo: &str)
 }
 
 fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
-    // println!("unpack {} {}", input_file, output_dir);
     println!("** Unpack Backup **");
     let output_dir = Path::new(output_dir);
     if output_dir.exists() {
@@ -124,7 +126,8 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
     }
 
     let content = read_file_to_bytes(input_file)?;
-    match WholeFile::parse(&content) {
+    let parsed_whole = WholeFile::parse(&content)?;
+    match parsed_whole {
         WholeFile::RC4File(_) | WholeFile::AESFile(_) => {
             println!("RouterOS Encrypted Backup");
             println!("Cannot unpack encrypted backup!");
@@ -135,7 +138,7 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
             println!("RouterOS Plaintext Backup");
             println!("Length: {} bytes", f.header.length);
             println!("Extracting backup...");
-            let unpacked_files = f.unpack_files(&content);
+            let unpacked_files = f.unpack_files(&content)?;
             let files_num = unpacked_files.len();
             if files_num > 0 {
                 if fs::create_dir(output_dir).is_ok() {
@@ -144,12 +147,12 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
                             .join(Path::new(&format!("{}.idx", &f.name)))
                             .into_os_string()
                             .into_string()
-                            .unwrap();
+                            .map_err(|_| anyhow!("cannot create idx output path"))?;
                         let dat = output_dir
                             .join(Path::new(&format!("{}.dat", &f.name)))
                             .into_os_string()
                             .into_string()
-                            .unwrap();
+                            .map_err(|_| anyhow!("cannot create dat output path"))?;
                         if let Err(e) = write_bytes_to_file(&f.idx, &idx) {
                             println!("Cannot write {}: {}", idx, e);
                         }
@@ -197,14 +200,25 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
         if let Some(extension_obj) = extension_obj {
             let extension = extension_obj;
             if extension == "idx" {
-                let stripped_filename = path.file_stem().unwrap().to_str().unwrap();
+                let stripped_filename = path
+                    .file_stem()
+                    .ok_or_else(|| anyhow!("cannot remove extension from filename"))?
+                    .to_str()
+                    .ok_or_else(|| anyhow!("cannot create stripped filename"))?;
                 let dat_filename = input_dir.join(format!("{}.dat", stripped_filename));
                 let dat_path = Path::new(&dat_filename);
                 if dat_path.exists() {
                     files_to_pack.push(PackedFile {
                         name: stripped_filename.to_string(),
-                        idx: read_file_to_bytes(path.to_str().unwrap())?,
-                        dat: read_file_to_bytes(dat_path.to_str().unwrap())?,
+                        idx: read_file_to_bytes(
+                            path.to_str()
+                                .ok_or_else(|| anyhow!("invalid idx filepath"))?,
+                        )?,
+                        dat: read_file_to_bytes(
+                            dat_path
+                                .to_str()
+                                .ok_or_else(|| anyhow!("invalid dat filepath"))?,
+                        )?,
                     });
                 }
             }
@@ -233,7 +247,8 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Res
     info_file(input_file)?;
     let wordlist = read_wordlist_file(wordlist_file)?;
     let content = read_file_to_bytes(input_file)?;
-    match WholeFile::parse(&content) {
+    let parsed_whole = WholeFile::parse(&content)?;
+    match parsed_whole {
         WholeFile::RC4File(f) => {
             if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
                 println!("Password found: {}", found);
@@ -255,7 +270,7 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Res
     }
 }
 
-fn main() -> Result<()> {
+fn main() {
     let matches = Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -400,5 +415,4 @@ fn main() -> Result<()> {
     if let Err(e) = result {
         eprintln!("{}", e);
     }
-    Ok(())
 }
