@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-//! Tools to encrypt/decrypt and pack/unpack RouterOS v6.13+ backup files
+//! Tools to encrypt/decrypt and pack/unpack `RouterOS` v6.13+ backup files
 
 use aes::cipher::KeyIvInit;
 use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
@@ -19,9 +19,9 @@ use anyhow::Result;
 
 mod tests;
 
-const MAGIC_ENCRYPTED_RC4: u32 = 0x7291A8EF;
-const MAGIC_ENCRYPTED_AES: u32 = 0x7391A8EF;
-const MAGIC_PLAINTEXT: u32 = 0xB1A1AC88;
+const MAGIC_ENCRYPTED_RC4: u32 = 0x7291_A8EF;
+const MAGIC_ENCRYPTED_AES: u32 = 0x7391_A8EF;
+const MAGIC_PLAINTEXT: u32 = 0xB1A1_AC88;
 
 type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
@@ -36,6 +36,7 @@ pub struct Header {
 
 impl Header {
     /// Parse a header from raw bytes
+    #[must_use]
     pub fn parse(raw: &[u8]) -> Header {
         Cursor::new(raw).read_le().unwrap()
     }
@@ -55,6 +56,7 @@ pub struct RC4File {
 
 impl RC4File {
     /// Check if the rc4 file password is correct or not
+    #[must_use]
     pub fn check_password(&self, password: &str) -> bool {
         let mut hasher = Sha1::new();
         hasher.update(&self.salt);
@@ -133,6 +135,7 @@ pub struct AESFile {
 
 impl AESFile {
     /// Check if the AES file password is correct or not
+    #[must_use]
     pub fn check_password(&self, password: &str) -> bool {
         let mut hasher = Sha256::new();
         hasher.update(&self.salt);
@@ -246,6 +249,7 @@ pub struct PlainTextFile {
 
 impl PlainTextFile {
     /// Unpack a decrypted file
+    #[must_use]
     pub fn unpack_files(&self, file_content: &[u8]) -> Vec<PackedFile> {
         let mut files: Vec<PackedFile> = Vec::new();
         let file_content = &file_content[8..];
@@ -259,7 +263,7 @@ impl PlainTextFile {
             let e = r.unwrap();
             extracted.push(e);
         }
-        for c in extracted.iter() {
+        for c in &extracted {
             files.push(PackedFile {
                 name: str::from_utf8(&c.name.content).unwrap().to_string(),
                 idx: c.idx.content.clone(),
@@ -301,7 +305,7 @@ impl PlainTextFile {
     }
 }
 
-/// Enum of all the possible RouterOS filetypes
+/// Enum of all the possible `RouterOS` filetypes
 #[derive(PartialEq, Debug, Eq)]
 pub enum WholeFile {
     /// RC4 Encrypted type
@@ -316,6 +320,7 @@ pub enum WholeFile {
 
 impl WholeFile {
     /// Parse raw bytes into one of the file types
+    #[must_use]
     pub fn parse(raw: &[u8]) -> WholeFile {
         let h: Header = Header::parse(raw);
         match h.magic {
