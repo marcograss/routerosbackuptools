@@ -95,7 +95,7 @@ impl RC4File {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
         let mut hasher = Sha1::new();
-        hasher.update(&salt);
+        hasher.update(salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
         let mut rc4 = Rc4::new(&hash);
@@ -168,7 +168,7 @@ impl AESFile {
         let mut temp: Vec<u8> = to_decrypt.to_vec();
         aes_ctr.apply_keystream(&mut temp);
         decrypted.append(&mut temp);
-        hmac.update(&self.magic_check.to_le_bytes());
+        hmac.update(self.magic_check.to_le_bytes());
         hmac.update(to_decrypt);
         let verified = hmac.finalize();
         if self.signature.len() == verified.len() && verified.to_vec() == self.signature {
@@ -187,7 +187,7 @@ impl AESFile {
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
         encrypted.append(&mut salt.clone().to_vec());
         let mut hasher = Sha256::new();
-        hasher.update(&salt);
+        hasher.update(salt);
         hasher.update(password.as_bytes());
         let finalized = hasher.finalize();
         let hash = &finalized[0..16];

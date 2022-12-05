@@ -139,7 +139,7 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
             let files_num = unpacked_files.len();
             if files_num > 0 {
                 if fs::create_dir(output_dir).is_ok() {
-                    for f in unpacked_files.iter() {
+                    for f in &unpacked_files {
                         let idx = output_dir
                             .join(Path::new(&format!("{}.idx", &f.name)))
                             .into_os_string()
