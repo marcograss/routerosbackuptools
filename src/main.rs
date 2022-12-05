@@ -150,11 +150,11 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
                             .into_os_string()
                             .into_string()
                             .unwrap();
-                        if write_bytes_to_file(&f.idx, &idx).is_err() {
-                            println!("Cannot write {}", idx);
+                        if let Err(e) = write_bytes_to_file(&f.idx, &idx) {
+                            println!("Cannot write {}: {}", idx, e);
                         }
-                        if write_bytes_to_file(&f.dat, &dat).is_err() {
-                            println!("Cannot write {}", dat);
+                        if let Err(e) = write_bytes_to_file(&f.dat, &dat) {
+                            println!("Cannot write {}: {}", dat, e);
                         }
                     }
                     println!(

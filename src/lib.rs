@@ -339,7 +339,7 @@ pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
 
 /// Utility to write a vector of bytes to a file
 pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()> {
-    let mut file = File::open(filename)?;
+    let mut file = File::create(filename)?;
     file.write_all(content)?;
     Ok(())
 }
