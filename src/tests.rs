@@ -1,6 +1,9 @@
 #[cfg(test)]
-mod tests {
-    use crate::*;
+mod testz {
+    use crate::{
+        AESFile, Header, PackedFile, PlainTextFile, RC4File, WholeFile, MAGIC_ENCRYPTED_AES,
+        MAGIC_ENCRYPTED_RC4, MAGIC_PLAINTEXT,
+    };
     #[test]
     fn parse_header() {
         let file_content: Vec<u8> = vec![0x34, 0x12, 0x00, 0x00, 0x78, 0x56, 0x00, 0x00];
@@ -21,8 +24,8 @@ mod tests {
             0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4,
         ];
         file_content.append(&mut salt.clone());
-        let magic_check: Vec<u8> = vec![0x41, 0x42, 0x43, 0x44];
-        file_content.append(&mut magic_check.clone());
+        let mut magic_check: Vec<u8> = vec![0x41, 0x42, 0x43, 0x44];
+        file_content.append(&mut magic_check);
         assert_eq!(
             WholeFile::parse(&file_content),
             WholeFile::RC4File(RC4File {
@@ -30,8 +33,8 @@ mod tests {
                     magic: MAGIC_ENCRYPTED_RC4,
                     length: 0x5678
                 },
-                salt: salt,
-                magic_check: 0x44434241,
+                salt,
+                magic_check: 0x4443_4241,
             })
         );
     }
@@ -46,8 +49,8 @@ mod tests {
         file_content.append(&mut salt.clone());
         let signature: Vec<u8> = vec![0x2; 32];
         file_content.append(&mut signature.clone());
-        let magic_check: Vec<u8> = vec![0x51, 0x52, 0x53, 0x54];
-        file_content.append(&mut magic_check.clone());
+        let mut magic_check: Vec<u8> = vec![0x51, 0x52, 0x53, 0x54];
+        file_content.append(&mut magic_check);
         assert_eq!(
             WholeFile::parse(&file_content),
             WholeFile::AESFile(AESFile {
@@ -55,9 +58,9 @@ mod tests {
                     magic: MAGIC_ENCRYPTED_AES,
                     length: 0x5678
                 },
-                salt: salt,
+                salt,
                 signature: signature,
-                magic_check: 0x54535251,
+                magic_check: 0x5453_5251,
             })
         );
     }
@@ -85,7 +88,7 @@ mod tests {
             0x29, 0x35,
         ];
         if let WholeFile::RC4File(f) = WholeFile::parse(&file_content) {
-            assert_eq!(true, f.check_password("modificailrouter"));
+            assert!(f.check_password("modificailrouter"));
         } else {
             panic!("We didn't get a RC4File");
         }
@@ -102,7 +105,7 @@ mod tests {
             0xa4, 0x63, 0xb2, 0xc2, 0x81, 0x07,
         ];
         if let WholeFile::AESFile(f) = WholeFile::parse(&file_content) {
-            assert_eq!(true, f.check_password("aespass"));
+            assert!(f.check_password("aespass"));
         } else {
             panic!("We didn't get a AESFile");
         }
@@ -193,17 +196,18 @@ mod tests {
 
     #[test]
     fn check_pack_unpack() {
-        let mut files: Vec<PackedFile> = Vec::new();
-        files.push(PackedFile {
-            name: "test1".to_string(),
-            idx: vec![1; 5],
-            dat: vec![2; 4],
-        });
-        files.push(PackedFile {
-            name: "test2".to_string(),
-            idx: vec![3; 7],
-            dat: vec![4; 8],
-        });
+        let files: Vec<PackedFile> = vec![
+            PackedFile {
+                name: "test1".to_string(),
+                idx: vec![1; 5],
+                dat: vec![2; 4],
+            },
+            PackedFile {
+                name: "test2".to_string(),
+                idx: vec![3; 7],
+                dat: vec![4; 8],
+            },
+        ];
         let packed = PlainTextFile::pack_files(&files).expect("cannot pack");
         match WholeFile::parse(&packed) {
             WholeFile::PlainTextFile(f) => {
