@@ -7,7 +7,7 @@ version = "0.1.4"
 
 [dependencies]
 aes = "0.8.2"
-anyhow = "1.0.66"
+anyhow = "1.0.68"
 binread = "2.2.0"
 binwrite = "0.2.1"
 clap = "4.0.32"
