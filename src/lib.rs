@@ -36,7 +36,7 @@ pub struct Header {
 
 impl Header {
     /// Parse a header from raw bytes
-    pub fn parse(raw: &[u8]) -> Result<Header> {
+    pub fn parse(raw: &[u8]) -> Result<Self> {
         Cursor::new(raw).read_le().map_err(|e| anyhow!(e))
     }
 }
@@ -145,7 +145,7 @@ impl DecryptionResult {
     #[must_use]
     pub fn as_vec(self) -> Vec<u8> {
         match self {
-            DecryptionResult::Correct(v) | DecryptionResult::WrongSignature(v) => v,
+            Self::Correct(v) | Self::WrongSignature(v) => v,
         }
     }
 }
@@ -336,13 +336,13 @@ pub enum WholeFile {
 
 impl WholeFile {
     /// Parse raw bytes into one of the file types
-    pub fn parse(raw: &[u8]) -> Result<WholeFile> {
+    pub fn parse(raw: &[u8]) -> Result<Self> {
         let h: Header = Header::parse(raw)?;
         Ok(match h.magic {
-            MAGIC_ENCRYPTED_RC4 => WholeFile::RC4File(Cursor::new(raw).read_le()?),
-            MAGIC_ENCRYPTED_AES => WholeFile::AESFile(Cursor::new(raw).read_le()?),
-            MAGIC_PLAINTEXT => WholeFile::PlainTextFile(Cursor::new(raw).read_le()?),
-            _ => WholeFile::InvalidFile,
+            MAGIC_ENCRYPTED_RC4 => Self::RC4File(Cursor::new(raw).read_le()?),
+            MAGIC_ENCRYPTED_AES => Self::AESFile(Cursor::new(raw).read_le()?),
+            MAGIC_PLAINTEXT => Self::PlainTextFile(Cursor::new(raw).read_le()?),
+            _ => Self::InvalidFile,
         })
     }
 }
