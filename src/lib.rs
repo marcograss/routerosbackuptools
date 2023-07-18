@@ -36,6 +36,9 @@ pub struct Header {
 
 impl Header {
     /// Parse a header from raw bytes
+    ///
+    /// # Errors
+    /// Can return a error if cannot read the 8 header bytes
     pub fn parse(raw: &[u8]) -> Result<Self> {
         Cursor::new(raw).read_le().map_err(|e| anyhow!(e))
     }
@@ -69,7 +72,10 @@ impl RC4File {
         output == MAGIC_PLAINTEXT.to_le_bytes()
     }
 
-    /// decrypt the rc4 file content
+    /// Decrypt the rc4 file content
+    ///
+    /// # Errors
+    /// Can error out for several reasons
     pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<DecryptionResult> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha1::new();
@@ -92,6 +98,9 @@ impl RC4File {
     }
 
     /// Encrypt a file content to this rc4 format
+    ///
+    /// # Errors
+    /// Can error out for several reasons
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
@@ -143,7 +152,7 @@ pub enum DecryptionResult {
 impl DecryptionResult {
     /// get back the underlying data Vec<u8>
     #[must_use]
-    pub fn as_vec(self) -> Vec<u8> {
+    pub const fn as_vec(&self) -> &Vec<u8> {
         match self {
             Self::Correct(v) | Self::WrongSignature(v) => v,
         }
@@ -167,6 +176,9 @@ impl AESFile {
     }
 
     /// Decrypt the AES file
+    ///
+    /// # Errors
+    /// it can error for arithmetic problems
     pub fn decrypt(&self, file_content: &[u8], password: &str) -> Result<DecryptionResult> {
         let mut decrypted = Vec::new();
         let mut hasher = Sha256::new();
@@ -199,6 +211,9 @@ impl AESFile {
     }
 
     /// Encrypt the file to AES type
+    ///
+    /// # Errors
+    /// it can errors due arithmetic problems
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
         let salt = rand::thread_rng().gen::<[u8; 32]>();
@@ -266,6 +281,9 @@ pub struct PlainTextFile {
 
 impl PlainTextFile {
     /// Unpack a decrypted file
+    ///
+    /// # Errors
+    /// it can error if the filenames are invalid
     pub fn unpack_files(&self, file_content: &[u8]) -> Result<Vec<PackedFile>> {
         let mut files: Vec<PackedFile> = Vec::new();
         let file_content = &file_content[8..];
@@ -290,6 +308,9 @@ impl PlainTextFile {
     }
 
     /// Pack files to a decrypted file
+    ///
+    /// # Errors
+    /// it can error out for several reasons related to file sizes
     pub fn pack_files(files: &[PackedFile]) -> Result<Vec<u8>> {
         let mut packed: Vec<u8> = Vec::new();
         for f in files.iter() {
@@ -336,6 +357,9 @@ pub enum WholeFile {
 
 impl WholeFile {
     /// Parse raw bytes into one of the file types
+    ///
+    /// # Errors
+    /// it can error out while reading the header or the file
     pub fn parse(raw: &[u8]) -> Result<Self> {
         let h: Header = Header::parse(raw)?;
         Ok(match h.magic {
@@ -348,6 +372,9 @@ impl WholeFile {
 }
 
 /// utility to read a file in a vector of bytes
+///
+/// # Errors
+/// can error out while reading the file
 pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
     let mut file = File::open(filename)?;
 
@@ -358,6 +385,9 @@ pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
 }
 
 /// Utility to write a vector of bytes to a file
+///
+/// # Errors
+/// Writing the file can error out
 pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()> {
     let mut file = File::create(filename)?;
     file.write_all(content)?;
@@ -365,6 +395,9 @@ pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()
 }
 
 /// Utility to read the wordlist for password cracking to a vec of strings
+///
+/// # Errors
+/// reading the file can error out
 pub fn read_wordlist_file(filename: &str) -> std::io::Result<Vec<String>> {
     let file = File::open(filename)?;
     let buf = BufReader::new(file);

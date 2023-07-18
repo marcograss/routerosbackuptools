@@ -48,7 +48,7 @@ fn decrypt_file(input_file: &str, output_file: &str, password: &str) -> Result<(
             if f.check_password(password) {
                 println!("Correct password!");
                 println!("Decrypting...");
-                let decrypted = f.decrypt(&content, password)?.as_vec();
+                let decrypted = f.decrypt(&content, password)?.as_vec().clone();
                 write_bytes_to_file(&decrypted, output_file)?;
                 Ok(())
             } else {
@@ -154,10 +154,10 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
                             .into_string()
                             .map_err(|_| anyhow!("cannot create dat output path"))?;
                         if let Err(e) = write_bytes_to_file(&f.idx, &idx) {
-                            println!("Cannot write {}: {}", idx, e);
+                            println!("Cannot write {idx}: {e}");
                         }
                         if let Err(e) = write_bytes_to_file(&f.dat, &dat) {
-                            println!("Cannot write {}: {}", dat, e);
+                            println!("Cannot write {dat}: {e}");
                         }
                     }
                     println!(
@@ -205,7 +205,7 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
                     .ok_or_else(|| anyhow!("cannot remove extension from filename"))?
                     .to_str()
                     .ok_or_else(|| anyhow!("cannot create stripped filename"))?;
-                let dat_filename = input_dir.join(format!("{}.dat", stripped_filename));
+                let dat_filename = input_dir.join(format!("{stripped_filename}.dat"));
                 let dat_path = Path::new(&dat_filename);
                 if dat_path.exists() {
                     files_to_pack.push(PackedFile {
@@ -250,19 +250,31 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Res
     let parsed_whole = WholeFile::parse(&content)?;
     match parsed_whole {
         WholeFile::RC4File(f) => {
-            if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                println!("Password found: {}", found);
-            } else {
-                println!("Password NOT found");
-            }
+            wordlist
+                .par_iter()
+                .find_any(|&w| f.check_password(w))
+                .map_or_else(
+                    || {
+                        println!("Password NOT found");
+                    },
+                    |found| {
+                        println!("Password found: {found}");
+                    },
+                );
             Ok(())
         }
         WholeFile::AESFile(f) => {
-            if let Some(found) = wordlist.par_iter().find_any(|&w| f.check_password(w)) {
-                println!("Password found: {}", found);
-            } else {
-                println!("Password NOT found");
-            }
+            wordlist
+                .par_iter()
+                .find_any(|&w| f.check_password(w))
+                .map_or_else(
+                    || {
+                        println!("Password NOT found");
+                    },
+                    |found| {
+                        println!("Password found: {found}");
+                    },
+                );
             Ok(())
         }
         WholeFile::PlainTextFile(_) => Err(anyhow!("No Decryption Needed.")),
@@ -270,7 +282,8 @@ fn bruteforce_file(input_file: &str, wordlist_file: &str, parallel: bool) -> Res
     }
 }
 
-fn main() {
+#[allow(clippy::too_many_lines)]
+fn main() -> Result<()> {
     let matches = Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -384,7 +397,7 @@ fn main() {
                 ),
         )
         .get_matches();
-    let result = match matches.subcommand() {
+    match matches.subcommand() {
         Some(("info", sub_m)) => info_file(sub_m.get_one::<String>("input").unwrap()),
         Some(("decrypt", sub_m)) => decrypt_file(
             sub_m.get_one::<String>("input").unwrap(),
@@ -411,8 +424,5 @@ fn main() {
             sub_m.get_flag("parallel"),
         ),
         _ => Ok(()),
-    };
-    if let Err(e) = result {
-        eprintln!("{}", e);
     }
 }

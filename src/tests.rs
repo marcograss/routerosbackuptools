@@ -126,6 +126,7 @@ mod testz {
                 f.decrypt(&file_content, "modificailrouter")
                     .expect("cannot decrypt")
                     .as_vec()
+                    .clone()
             );
         } else {
             panic!("We didn't get a RC4File");
@@ -149,6 +150,7 @@ mod testz {
                 f.decrypt(&file_content, "aespass")
                     .expect("cannot decrypt")
                     .as_vec()
+                    .clone()
             );
         } else {
             panic!("We didn't get a AESFile");
@@ -165,6 +167,7 @@ mod testz {
                 f.decrypt(&encrypted, "rc4pass")
                     .expect("cannot decrypt")
                     .as_vec()
+                    .clone()
             );
         } else {
             panic!("We didn't get a RC4File");
@@ -181,6 +184,7 @@ mod testz {
                 f.decrypt(&encrypted, "aespass")
                     .expect("cannot decrypt")
                     .as_vec()
+                    .clone()
             );
         } else {
             panic!("We didn't get a AESFile");
