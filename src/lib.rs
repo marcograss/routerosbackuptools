@@ -2,7 +2,7 @@
 //! Tools to encrypt/decrypt and pack/unpack `RouterOS` v6.13+ backup files
 
 use aes::cipher::KeyIvInit;
-use binread::{io::Cursor, BinRead, BinReaderExt, BinResult};
+use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult};
 use binwrite::BinWrite;
 use hmac_sha256::HMAC;
 use rand::Rng;
