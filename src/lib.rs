@@ -2,8 +2,7 @@
 //! Tools to encrypt/decrypt and pack/unpack `RouterOS` v6.13+ backup files
 
 use aes::cipher::KeyIvInit;
-use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult};
-use binwrite::BinWrite;
+use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult, BinWrite};
 use hmac_sha256::HMAC;
 use rand::Rng;
 use rc4::KeyInit;
@@ -246,7 +245,7 @@ impl AESFile {
 }
 
 #[derive(BinRead, PartialEq, Debug, BinWrite, Eq)]
-#[binwrite(little)]
+#[brw(little)]
 struct PackedItem {
     len: u32,
     #[br(count = len)]
@@ -254,7 +253,7 @@ struct PackedItem {
 }
 
 #[derive(BinRead, PartialEq, Debug, BinWrite, Eq)]
-#[binwrite(little)]
+#[brw(little)]
 struct PackedTriple {
     name: PackedItem,
     idx: PackedItem,
@@ -313,7 +312,7 @@ impl PlainTextFile {
     /// it can error out for several reasons related to file sizes
     pub fn pack_files(files: &[PackedFile]) -> Result<Vec<u8>> {
         let mut packed: Vec<u8> = Vec::new();
-        for f in files.iter() {
+        for f in files {
             let name_vec: Vec<u8> = f.name.clone().into_bytes();
             let t = PackedTriple {
                 name: PackedItem {
@@ -329,9 +328,9 @@ impl PlainTextFile {
                     content: f.dat.clone(),
                 },
             };
-            let mut tmp: Vec<u8> = Vec::new();
+            let mut tmp = Cursor::new(Vec::new());
             t.write(&mut tmp)?;
-            packed.append(&mut tmp);
+            packed.append(tmp.get_mut());
         }
         let content_len: u32 = (packed.len() - 4).try_into()?;
         let mut header: Vec<u8> = Vec::new();
@@ -398,6 +397,8 @@ pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()
 ///
 /// # Errors
 /// reading the file can error out
+/// # Panics
+/// can panic if the wordlist file cannot be parsed
 pub fn read_wordlist_file(filename: &str) -> std::io::Result<Vec<String>> {
     let file = File::open(filename)?;
     let buf = BufReader::new(file);
