@@ -220,6 +220,11 @@ mod testz {
                 idx: vec![3; 7],
                 dat: vec![4; 8],
             },
+            PackedFile {
+                name: "test1/test2/test3/test4".to_string(),
+                idx: vec![9; 10],
+                dat: vec![15; 41],
+            },
         ];
         let packed = PlainTextFile::pack_files(&files).expect("cannot pack");
         match WholeFile::parse(&packed).expect("cannot parse file") {

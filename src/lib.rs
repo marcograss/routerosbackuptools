@@ -11,7 +11,8 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{prelude::*, BufReader, Read};
+use std::io::{prelude::*, BufReader, ErrorKind, Read};
+use std::path::Path;
 use std::str;
 
 use anyhow::{anyhow, Result};
@@ -388,6 +389,11 @@ pub fn read_file_to_bytes(filename: &str) -> std::io::Result<Vec<u8>> {
 /// # Errors
 /// Writing the file can error out
 pub fn write_bytes_to_file(content: &[u8], filename: &str) -> std::io::Result<()> {
+    let parent_dir = Path::new(filename);
+    let parent_dir = parent_dir
+        .parent()
+        .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "can't get parent folder"))?;
+    std::fs::create_dir_all(parent_dir)?;
     let mut file = File::create(filename)?;
     file.write_all(content)?;
     Ok(())

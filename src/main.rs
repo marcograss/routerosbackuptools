@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::{builder::PossibleValue, Arg, ArgAction, Command};
 use rayon::prelude::*;
-use std::fs;
 use std::path::Path;
+use std::{fs, path::PathBuf};
+use walkdir::WalkDir;
 
 use routerosbackuptools::{
     read_file_to_bytes, read_wordlist_file, write_bytes_to_file, AESFile, DecryptionResult,
@@ -143,16 +144,17 @@ fn unpack_file(input_file: &str, output_dir: &str) -> Result<()> {
             if files_num > 0 {
                 if fs::create_dir(output_dir).is_ok() {
                     for f in &unpacked_files {
-                        let idx = output_dir
-                            .join(Path::new(&format!("{}.idx", &f.name)))
+                        let idx_path = output_dir.join(Path::new(&format!("{}.idx", &f.name)));
+                        let idx = idx_path
                             .into_os_string()
                             .into_string()
                             .map_err(|_| anyhow!("cannot create idx output path"))?;
-                        let dat = output_dir
-                            .join(Path::new(&format!("{}.dat", &f.name)))
+                        let dat_path = output_dir.join(Path::new(&format!("{}.dat", &f.name)));
+                        let dat = dat_path
                             .into_os_string()
                             .into_string()
                             .map_err(|_| anyhow!("cannot create dat output path"))?;
+
                         if let Err(e) = write_bytes_to_file(&f.idx, &idx) {
                             println!("Cannot write {idx}: {e}");
                         }
@@ -193,11 +195,16 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
     if !input_dir.is_dir() {
         return Err(anyhow!("{} is not a directory", input_dir.display()));
     }
-    let files = fs::read_dir(input_dir)?;
-    for f in files.flatten() {
+    for f in WalkDir::new(input_dir) {
+        if let Err(e) = f {
+            println!("{e}");
+            continue;
+        }
+        let f = f?;
         let path = f.path();
         let extension_obj = path.extension();
-        if let Some(extension_obj) = extension_obj {
+        let path_folder = path.parent();
+        if let (Some(extension_obj), Some(path_folder)) = (extension_obj, path_folder) {
             let extension = extension_obj;
             if extension == "idx" {
                 let stripped_filename = path
@@ -205,11 +212,17 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
                     .ok_or_else(|| anyhow!("cannot remove extension from filename"))?
                     .to_str()
                     .ok_or_else(|| anyhow!("cannot create stripped filename"))?;
-                let dat_filename = input_dir.join(format!("{stripped_filename}.dat"));
+                let dat_filename = path_folder.join(format!("{stripped_filename}.dat"));
                 let dat_path = Path::new(&dat_filename);
                 if dat_path.exists() {
-                    files_to_pack.push(PackedFile {
-                        name: stripped_filename.to_string(),
+                    let b: Vec<_> = path_folder.components().skip(1).collect();
+                    let pb: PathBuf = b.iter().collect();
+                    let packed_file = PackedFile {
+                        name: pb
+                            .join(stripped_filename)
+                            .to_str()
+                            .ok_or_else(|| anyhow!("cannot create filename"))?
+                            .to_string(),
                         idx: read_file_to_bytes(
                             path.to_str()
                                 .ok_or_else(|| anyhow!("invalid idx filepath"))?,
@@ -219,7 +232,10 @@ fn pack_file(input_dir: &str, output_file: &str) -> Result<()> {
                                 .to_str()
                                 .ok_or_else(|| anyhow!("invalid dat filepath"))?,
                         )?,
-                    });
+                    };
+                    files_to_pack.push(packed_file);
+                } else {
+                    return Err(anyhow!("path {} doesn't exist", dat_path.display()));
                 }
             }
         }
@@ -350,7 +366,7 @@ fn main() -> Result<()> {
                 .arg(
                     Arg::new("input")
                         .short('i')
-                        .help("input file to unpack")
+                        .help("input file to unpack DON'T USE ON UNTRUSTED BACKUPS!")
                         .required(true),
                 )
                 .arg(

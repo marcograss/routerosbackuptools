@@ -23,7 +23,10 @@ Convert a plaintext backup to an encrypted backup
 ### Unpack  
 
 Extract all IDX and DAT files from a plaintext backup in a given directory
-`cargo run -- unpack -i MikroTik-plaintext.backup -d unpacked_backup`  
+`cargo run -- unpack -i MikroTik-plaintext.backup -d unpacked_backup`
+
+> [!CAUTION]
+> **Do not use on untrusted backups, can likely write anywhere**: Be very careful here!
 
 ### Pack  
 
