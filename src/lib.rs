@@ -4,7 +4,7 @@
 use aes::cipher::KeyIvInit;
 use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult, BinWrite};
 use hmac_sha256::HMAC;
-use rand::Rng;
+use rand::RngExt;
 use rc4::KeyInit;
 use rc4::{Rc4, StreamCipher};
 use sha1::Sha1;
@@ -64,7 +64,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new_from_slice(&hash).expect("sha1 produces a 20 byte key");
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid rc4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -82,7 +82,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new_from_slice(&hash).expect("sha1 produces a 20 byte key");
+        let mut rc4 = Rc4::new_from_slice(&hash).map_err(|e| anyhow!(e))?;
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -103,12 +103,12 @@ impl RC4File {
     /// Can error out for several reasons
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
-        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        let salt = rand::rng().random::<[u8; 32]>();
         let mut hasher = Sha1::new();
         hasher.update(salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new_from_slice(&hash).expect("sha1 produces a 20 byte key");
+        let mut rc4 = Rc4::new_from_slice(&hash).map_err(|e| anyhow!(e))?;
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
@@ -168,7 +168,7 @@ impl AESFile {
         hasher.update(password.as_bytes());
         let hash = &hasher.finalize()[0..16];
         let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &self.salt[0..16])
-            .expect("16 byte key and IV");
+            .expect("invalid aes key/iv length");
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
@@ -190,7 +190,7 @@ impl AESFile {
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
         let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &self.salt[0..16])
-            .expect("16 byte key and IV");
+            .map_err(|e| anyhow!(e))?;
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
@@ -218,7 +218,7 @@ impl AESFile {
     /// it can errors due arithmetic problems
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
-        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        let salt = rand::rng().random::<[u8; 32]>();
         encrypted.append(&mut MAGIC_ENCRYPTED_AES.to_le_bytes().to_vec());
         let content_len: u32 = (file_content.len() - 8).try_into()?;
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
@@ -231,7 +231,7 @@ impl AESFile {
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
         let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &salt[0..16])
-            .expect("16 byte key and IV");
+            .map_err(|e| anyhow!(e))?;
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = MAGIC_PLAINTEXT.to_le_bytes().into();
