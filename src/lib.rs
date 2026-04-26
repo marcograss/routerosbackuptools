@@ -64,7 +64,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid rc4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -82,7 +82,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid rc4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -108,7 +108,7 @@ impl RC4File {
         hasher.update(salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid rc4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
@@ -167,7 +167,8 @@ impl AESFile {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = &hasher.finalize()[0..16];
-        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), self.salt[0..16].into());
+        let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &self.salt[0..16])
+            .expect("invalid aes key/iv length");
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
@@ -188,7 +189,8 @@ impl AESFile {
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
-        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), self.salt[0..16].into());
+        let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &self.salt[0..16])
+            .expect("invalid aes key/iv length");
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().to_vec();
@@ -228,7 +230,8 @@ impl AESFile {
         let hash = &finalized[0..16];
         let hash_hmac = &finalized[16..];
         let mut hmac = HMAC::new(hash_hmac);
-        let mut aes_ctr = Aes128Ctr128BE::new(hash.into(), salt[0..16].into());
+        let mut aes_ctr = Aes128Ctr128BE::new_from_slices(hash, &salt[0..16])
+            .expect("invalid aes key/iv length");
         let mut skip_out: Vec<u8> = vec![0; 0x10];
         aes_ctr.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = MAGIC_PLAINTEXT.to_le_bytes().into();
