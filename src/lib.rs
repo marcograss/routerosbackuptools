@@ -4,7 +4,7 @@
 use aes::cipher::KeyIvInit;
 use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult, BinWrite};
 use hmac_sha256::HMAC;
-use rand::Rng;
+use rand::RngExt;
 use rc4::KeyInit;
 use rc4::{Rc4, StreamCipher};
 use sha1::Sha1;
@@ -103,7 +103,7 @@ impl RC4File {
     /// Can error out for several reasons
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
-        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        let salt = rand::rng().random::<[u8; 32]>();
         let mut hasher = Sha1::new();
         hasher.update(salt);
         hasher.update(password.as_bytes());
@@ -218,7 +218,7 @@ impl AESFile {
     /// it can errors due arithmetic problems
     pub fn encrypt(file_content: &[u8], password: &str) -> Result<Vec<u8>> {
         let mut encrypted = Vec::new();
-        let salt = rand::thread_rng().gen::<[u8; 32]>();
+        let salt = rand::rng().random::<[u8; 32]>();
         encrypted.append(&mut MAGIC_ENCRYPTED_AES.to_le_bytes().to_vec());
         let content_len: u32 = (file_content.len() - 8).try_into()?;
         encrypted.append(&mut content_len.to_le_bytes().to_vec());
