@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 //! Tools to encrypt/decrypt and pack/unpack `RouterOS` v6.13+ backup files
 
-use aes::cipher::KeyIvInit;
+use aes::cipher::{KeyIvInit, StreamCipher as AesStreamCipher};
 use binrw::{io::Cursor, BinRead, BinReaderExt, BinResult, BinWrite};
 use hmac_sha256::HMAC;
 use rand::Rng;
@@ -64,7 +64,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid RC4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -82,7 +82,7 @@ impl RC4File {
         hasher.update(&self.salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid RC4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         let mut output: Vec<u8> = self.magic_check.to_le_bytes().into();
@@ -108,7 +108,7 @@ impl RC4File {
         hasher.update(salt);
         hasher.update(password.as_bytes());
         let hash = hasher.finalize();
-        let mut rc4 = Rc4::new(&hash);
+        let mut rc4 = Rc4::new_from_slice(&hash).expect("invalid RC4 key length");
         let mut skip_out: Vec<u8> = vec![0; 0x300];
         rc4.apply_keystream(&mut skip_out);
         encrypted.append(&mut MAGIC_ENCRYPTED_RC4.to_le_bytes().to_vec());
